@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// API Access Tiers
+enum ApiTier {
+  FREE   // 100 req/min, basic endpoints
+  FEEDER // 1000 req/min, auto-granted to active feeders
+  PRO    // 10000 req/min, paid (future)
+}
+
+// Better Auth: User account
+model user {
+  id            String    @id
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  name          String
+  image         String?
+
+  // Custom fields for ADS-B
+  apiKey  String?  @unique // Generated API key
+  apiTier ApiTier  @default(FREE)
+
+  // Better Auth relations
+  sessions session[]
+  accounts account[]
+
+  // ADS-B relations
+  feeders Feeder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Better Auth: Session
+model session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Better Auth: Account (for OAuth providers)
+model account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?   // For email/password auth
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Better Auth: Verification (email verification, password reset)
+model verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Feeder (Pi that sends ADS-B data)
+model Feeder {
+  id        String  @id @default(cuid())
+  uuid      String  @unique // Beast feeder UUID
+  name      String
+  latitude  Float?
+  longitude Float?
+
+  // Owner
+  userId String
+  user   user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Stats (updated periodically)
+  messagesTotal  BigInt   @default(0)
+  positionsTotal BigInt   @default(0)
+  aircraftSeen   Int      @default(0)
+  lastSeen       DateTime?
+  isOnline       Boolean  @default(false)
+
+  // Historical stats
+  stats FeederStats[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isOnline])
+}
+
+// Historical feeder statistics (hourly snapshots)
+model FeederStats {
+  id       String @id @default(cuid())
+  feederId String
+  feeder   Feeder @relation(fields: [feederId], references: [id], onDelete: Cascade)
+
+  timestamp DateTime @default(now())
+  messages  Int      // Messages in this period
+  positions Int      // Positions in this period
+  aircraft  Int      // Unique aircraft seen
+
+  @@index([feederId, timestamp])
+  @@index([timestamp])
+}
+
+// Future: Stripe subscription for Pro tier
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  stripeCustomerId String?
+  stripePriceId    String?
+  status           String    // active, canceled, past_due
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
