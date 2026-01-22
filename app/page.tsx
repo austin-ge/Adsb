@@ -9,7 +9,7 @@ export default function Home() {
       <nav className="container mx-auto px-4 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold text-lg">
           <Plane className="h-6 w-6 text-primary" />
-          ADS-B Aggregator
+          HangarTrak Radar
         </Link>
         <div className="flex items-center gap-4">
           <Button variant="ghost" asChild>
@@ -28,8 +28,8 @@ export default function Home() {
             Community Flight Tracking
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Join our community-powered ADS-B network. Feed flight data from your
-            Raspberry Pi and get free API access to aircraft tracking data.
+            Join the HangarTrak community ADS-B network. Feed flight data from your
+            Raspberry Pi and power aircraft tracking for everyone.
           </p>
           <div className="flex gap-4 justify-center">
             <Button size="lg" asChild>
@@ -132,7 +132,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-20">
         <div className="container mx-auto px-4 py-8 text-center text-gray-600">
-          <p>ADS-B Aggregator - Community-powered flight tracking</p>
+          <p>HangarTrak Radar - Community-powered flight tracking</p>
         </div>
       </footer>
     </main>

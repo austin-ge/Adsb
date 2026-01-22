@@ -1,5 +1,5 @@
 #!/bin/bash
-# Startup script for ADS-B Aggregator (readsb + tar1090)
+# Startup script for HangarTrak Radar (readsb + tar1090)
 
 set -e
 
@@ -8,7 +8,7 @@ BEAST_INPUT_PORT="${BEAST_INPUT_PORT:-30004}"
 JSON_DIR="${JSON_DIR:-/run/readsb}"
 JSON_INTERVAL="${JSON_INTERVAL:-1}"
 
-echo "Starting ADS-B Aggregator..."
+echo "Starting HangarTrak Radar..."
 echo "  Beast input port: $BEAST_INPUT_PORT"
 echo "  JSON output: $JSON_DIR"
 
@@ -50,7 +50,7 @@ shutdown() {
 
 trap shutdown SIGTERM SIGINT
 
-echo "ADS-B Aggregator running!"
+echo "HangarTrak Radar running!"
 echo "  tar1090 available at http://localhost:80"
 echo "  Feeders should connect to port $BEAST_INPUT_PORT"
 echo ""

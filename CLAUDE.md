@@ -1,32 +1,60 @@
-# ADS-B Aggregator - Claude Context File
+# HangarTrak Radar - Claude Context File
 
 ## Project Overview
-ADS-B Aggregator is a community-powered flight tracking platform that receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides a dashboard for feeder management, statistics, and API access.
+HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 1 - Initial Setup
-**Target:** Multi-user ADS-B aggregator with tiered API access
+**Status:** Phase 5 - Core features complete, integrating with HangarTrak
+**Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
 
-## Documentation
-- **[docs/PLAN.md](./docs/PLAN.md)** - Complete implementation plan, architecture, phases, deployment
+## Integration with HangarTrak
+
+### Current HangarTrak Data Flow (before)
+```
+Local dump1090 (single Pi) → HangarTrak
+       ↓ (fallback for aircraft outside range)
+adsb.lol API → HangarTrak
+```
+
+### Future Data Flow (with HangarTrak Radar)
+```
+Community feeders (many Pis) → HangarTrak Radar → HangarTrak
+                                    ↓
+                              Public API (for others)
+```
+
+### Domain Structure (Production)
+- `hangartrak.com` - Main HangarTrak app (aircraft tracking, flight logs)
+- `radar.hangartrak.com` - Feeder registration & dashboard (this repo)
+- `map.hangartrak.com` - tar1090 live map (Docker aggregator)
+- `api.hangartrak.com/v1/` - Public aircraft API
 
 ## Architecture
 
 ### Dokploy Applications (3 separate services)
-1. **adsb-aggregator** - readsb + tar1090 (Docker)
+1. **hangartrak-radar** - readsb + tar1090 (Docker)
    - TCP :30004 - Beast input from feeders
    - HTTP :8080 - tar1090 map UI
-2. **adsb-web** - Next.js dashboard (this repo)
+2. **hangartrak-radar-web** - Next.js dashboard (this repo)
    - User accounts, feeder management, API
-3. **adsb-db** - PostgreSQL (Dokploy managed)
+3. **hangartrak-radar-db** - PostgreSQL (Dokploy managed)
 
 ### Data Flow
 ```
-Pi (readsb) --Beast--> adsb-aggregator:30004 --> JSON --> tar1090:8080
-                                                     \--> Next.js API
+Pi (readsb) --Beast--> hangartrak-radar:30004 --> JSON --> tar1090:8080
+                                                       \--> Next.js API
+                                                       \--> HangarTrak (replaces adsb.lol)
 ```
 
+### Feeder Self-Reporting
+Each Pi runs a stats reporter service that POSTs to `/api/v1/feeders/:uuid/heartbeat` every 30 seconds with:
+- Aircraft count with positions
+- Messages received (delta)
+- Positions received (delta)
+
+This allows accurate per-feeder stats even though readsb aggregates all feeds together.
+
 ## Technology Stack
-- **Frontend:** Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui
+- **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS, shadcn/ui
 - **Backend:** Next.js API Routes, Prisma ORM, PostgreSQL, Better Auth
 - **Aggregator:** readsb (network-only mode), tar1090
 - **Infrastructure:** Dokploy on Hostinger VPS
@@ -39,6 +67,7 @@ DATABASE_URL="postgresql://..."
 BETTER_AUTH_SECRET="..."  # Generate: openssl rand -base64 32
 BETTER_AUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+NEXT_PUBLIC_MAP_URL="http://localhost:8080"
 READSB_JSON_URL="http://localhost:8080/data/aircraft.json"
 ```
 
@@ -55,18 +84,20 @@ npx prisma generate
 npx prisma studio
 
 # Docker (aggregator)
-docker build -t adsb-aggregator ./docker/aggregator
-docker run -p 30004:30004 -p 8080:80 adsb-aggregator
+docker build -t hangartrak-radar ./docker/aggregator
+docker run --name hangartrak-radar -p 30004:30004 -p 8080:80 hangartrak-radar
 ```
 
 ### Project Structure
 ```
 adsb/
 ├── app/                     # Next.js App Router
-│   ├── (auth)/              # Auth pages
+│   ├── (auth)/              # Auth pages (login, register)
 │   ├── (dashboard)/         # Dashboard pages
+│   ├── (public)/            # Public pages (leaderboard, docs)
 │   └── api/                 # API routes
-│       └── v1/              # Public API
+│       ├── v1/              # Public API (aircraft, stats, feeders)
+│       └── install/[uuid]/  # Personalized install scripts
 ├── components/              # React components
 │   └── ui/                  # shadcn/ui
 ├── lib/                     # Utilities
@@ -74,13 +105,15 @@ adsb/
 │   ├── auth.ts              # Better Auth config
 │   ├── auth-client.ts       # Better Auth React client
 │   ├── readsb.ts            # Aircraft data fetching
-│   └── api/                 # API middleware
+│   └── api/                 # API middleware, rate limiting
 ├── prisma/                  # Database schema
 ├── docker/
 │   └── aggregator/          # readsb + tar1090 Docker
-├── scripts/                 # Background workers, install scripts
+├── scripts/
+│   ├── feeder-stats.sh      # Pi stats reporter template
+│   └── stats-worker.ts      # Background stats collection
 ├── docs/
-│   └── PLAN.md              # Implementation plan
+│   └── PLAN.md              # Original implementation plan
 ├── Dockerfile               # Next.js production build
 └── CLAUDE.md                # This file
 ```
@@ -89,7 +122,7 @@ adsb/
 - **User** - Account with API key and tier
 - **Feeder** - Pi device sending data (UUID, stats, location)
 - **FeederStats** - Historical statistics (hourly snapshots)
-- **Subscription** - Future Stripe integration
+- **Session/Account/Verification** - Better Auth tables
 
 ### API Tiers
 | Tier | Rate Limit | Access |
@@ -103,39 +136,45 @@ adsb/
 - Rate limiting in `lib/api/middleware.ts`
 - Aircraft data from tar1090 JSON endpoint
 - Feeders connect via readsb `--net-connector`
+- Feeders self-report stats via heartbeat API
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Infrastructure (Current)
-- [x] Aggregator Dockerfile (readsb + tar1090)
+### Completed
+- [x] Aggregator Docker (readsb + tar1090)
 - [x] Next.js project setup
-- [x] Prisma schema
-- [ ] Test aggregator with Pi
+- [x] Prisma schema & database
+- [x] Better Auth authentication
+- [x] Feeder registration & management
+- [x] Personalized install scripts
+- [x] Feeder self-reporting (heartbeat API)
+- [x] Public API endpoints (/api/v1/aircraft, /api/v1/stats)
+- [x] API key generation
+- [x] Landing page
+- [x] HangarTrak branding
 
-### Phase 2: Dashboard Foundation
-- [ ] Authentication (login/register)
-- [ ] User dashboard
-- [ ] Deploy to Dokploy
-
-### Phase 3: Feeder Management
-- [ ] Feeder registration
-- [ ] Personalized install scripts
-- [ ] Feeder status tracking
-
-### Phase 4: Statistics & Leaderboards
-- [ ] Background stats worker
+### Remaining
 - [ ] Leaderboard page
-- [ ] Historical charts
+- [ ] Historical charts (feeder stats over time)
+- [ ] Rate limiting middleware
+- [ ] API documentation page
+- [ ] HangarTrak integration (update HangarTrak to use this API)
+- [ ] Production deployment to Dokploy
 
-### Phase 5: Public API
-- [ ] API key generation
-- [ ] Rate limiting
-- [ ] Documentation
+## HangarTrak Integration Points
 
-### Phase 6: Polish & Launch
-- [ ] Landing page
-- [ ] Mobile responsive
-- [ ] Documentation
+When integrating with HangarTrak, update these in the HangarTrak codebase:
+
+1. **lib/adsb/data-sources.ts** - Add HangarTrak Radar as a data source
+2. **Environment variables** - Add `HANGARTRAK_RADAR_URL`
+3. **Fallback chain** - Local dump1090 → HangarTrak Radar → adsb.lol (last resort)
+
+### API Endpoints for HangarTrak
+```
+GET /api/v1/aircraft              - All current aircraft
+GET /api/v1/aircraft/:hex         - Single aircraft by ICAO hex
+GET /api/v1/stats                 - Network statistics
+```
 
 ---
 **Last Updated:** January 2026

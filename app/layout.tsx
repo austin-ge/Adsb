@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ADS-B Aggregator",
-  description: "Community-powered ADS-B flight tracking network",
+  title: "HangarTrak Radar",
+  description: "Community-powered ADS-B flight tracking network - Power HangarTrak with your feeder",
 };
 
 export default function RootLayout({

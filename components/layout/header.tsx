@@ -40,7 +40,7 @@ export function Header() {
       <div className="flex h-14 items-center px-4 md:px-6">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
           <Plane className="h-5 w-5 text-primary" />
-          <span className="hidden sm:inline">ADS-B Aggregator</span>
+          <span className="hidden sm:inline">HangarTrak Radar</span>
         </Link>
 
         <nav className="ml-auto flex items-center gap-4">
