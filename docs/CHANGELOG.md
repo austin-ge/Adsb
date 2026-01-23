@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Database schema migration: added `apiKeyHash`, `apiKeyPrefix` columns to `user` table (replacing old `apiKey`) and `heartbeatToken` to `Feeder` table
+- Map aircraft icons not rendering after dynamic import refactor — replaced unreliable `onLoad` callback with polling `useEffect` that waits for map readiness before adding custom SDF icon
+- Password reset now uses Better Auth's native `hashPassword` (`@noble/hashes/scrypt` with N:16384, r:16, p:1)
+
 ### Added
 - Aircraft list sidebar on map page with search filtering, sortable columns (callsign, altitude, speed, squawk, distance), click-to-fly-to selection, and collapsible panel
 - Live aircraft map page with Mapbox visualization and altitude-based color coding

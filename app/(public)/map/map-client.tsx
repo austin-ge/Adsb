@@ -111,35 +111,46 @@ export default function MapPage() {
     return () => cancelAnimationFrame(pulseAnimRef.current);
   }, []);
 
-  // Load aircraft icon when map loads
-  const onMapLoad = useCallback(() => {
-    const map = mapRef.current?.getMap();
-    if (!map) return;
+  // Track when the custom aircraft icon has been added to the map
+  const [iconReady, setIconReady] = useState(false);
 
-    // Create aircraft icon (triangle/arrow shape)
-    const size = 48;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Poll for map readiness and add icon (bypasses onLoad timing issues)
+  useEffect(() => {
+    if (iconReady) return;
+    let cancelled = false;
+    const tryAddIcon = () => {
+      if (cancelled) return;
+      const map = mapRef.current?.getMap();
+      if (!map || !map.isStyleLoaded()) {
+        setTimeout(tryAddIcon, 50);
+        return;
+      }
+      if (map.hasImage("aircraft-icon")) {
+        setIconReady(true);
+        return;
+      }
+      const size = 48;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    // Draw aircraft shape pointing up
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(size / 2, 4); // Nose
-    ctx.lineTo(size - 8, size - 8); // Right wing
-    ctx.lineTo(size / 2, size - 14); // Tail center
-    ctx.lineTo(8, size - 8); // Left wing
-    ctx.closePath();
-    ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(size / 2, 4);
+      ctx.lineTo(size - 8, size - 8);
+      ctx.lineTo(size / 2, size - 14);
+      ctx.lineTo(8, size - 8);
+      ctx.closePath();
+      ctx.fill();
 
-    map.addImage("aircraft-icon", {
-      width: size,
-      height: size,
-      data: ctx.getImageData(0, 0, size, size).data,
-    } as unknown as ImageData);
-  }, []);
+      map.addImage("aircraft-icon", ctx.getImageData(0, 0, size, size), { sdf: true });
+      setIconReady(true);
+    };
+    tryAddIcon();
+    return () => { cancelled = true; };
+  }, [iconReady]);
 
   // Build GeoJSON from aircraft data
   const geojson = useMemo(() => {
@@ -287,7 +298,6 @@ export default function MapPage() {
         mapStyle="mapbox://styles/mapbox/dark-v11"
         interactiveLayerIds={["aircraft-markers"]}
         onClick={handleMapClick}
-        onLoad={onMapLoad}
         onMoveEnd={handleMoveEnd}
         attributionControl={false}
       >
@@ -336,40 +346,54 @@ export default function MapPage() {
         </Source>
 
         <Source id="aircraft" type="geojson" data={geojson}>
-          {/* Aircraft icons */}
-          <Layer
-            id="aircraft-markers"
-            type="symbol"
-            layout={{
-              "icon-image": "aircraft-icon",
-              "icon-size": [
-                "case",
-                ["all", ["==", ["get", "isSelected"], 1], ["==", ["get", "isEmergency"], 1]],
-                0.75,
-                ["==", ["get", "isSelected"], 1],
-                0.6,
-                ["==", ["get", "isEmergency"], 1],
-                0.55,
-                0.4,
-              ],
-              "icon-rotate": ["get", "track"],
-              "icon-rotation-alignment": "map",
-              "icon-allow-overlap": true,
-              "icon-ignore-placement": true,
-              "text-field": ["get", "flight"],
-              "text-size": 11,
-              "text-offset": [0, 1.8],
-              "text-optional": true,
-              "text-allow-overlap": false,
-            }}
-            paint={{
-              "icon-color": ["get", "color"],
-              "icon-opacity": 0.9,
-              "text-color": "#e2e8f0",
-              "text-halo-color": "#0f172a",
-              "text-halo-width": 1.5,
-            }}
-          />
+          {/* Aircraft icons - only render after custom icon is loaded */}
+          {iconReady ? (
+            <Layer
+              id="aircraft-markers"
+              type="symbol"
+              layout={{
+                "icon-image": "aircraft-icon",
+                "icon-size": [
+                  "case",
+                  ["all", ["==", ["get", "isSelected"], 1], ["==", ["get", "isEmergency"], 1]],
+                  0.75,
+                  ["==", ["get", "isSelected"], 1],
+                  0.6,
+                  ["==", ["get", "isEmergency"], 1],
+                  0.55,
+                  0.4,
+                ],
+                "icon-rotate": ["get", "track"],
+                "icon-rotation-alignment": "map",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "text-field": ["get", "flight"],
+                "text-size": 11,
+                "text-offset": [0, 1.8],
+                "text-optional": true,
+                "text-allow-overlap": false,
+              }}
+              paint={{
+                "icon-color": ["get", "color"],
+                "icon-opacity": 0.9,
+                "text-color": "#e2e8f0",
+                "text-halo-color": "#0f172a",
+                "text-halo-width": 1.5,
+              }}
+            />
+          ) : (
+            <Layer
+              id="aircraft-markers"
+              type="symbol"
+              layout={{
+                "icon-image": "airport",
+                "icon-size": 1.2,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+              }}
+              paint={{ "icon-opacity": 0.9 }}
+            />
+          )}
         </Source>
       </MapGL>
 

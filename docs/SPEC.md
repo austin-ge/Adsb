@@ -177,7 +177,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 7. **Server-Side Deduplication:** `React.cache()` wraps `getServerSession` and `fetchAircraftData` to prevent redundant calls within a single request
 8. **Parallel Database Queries:** Stats and heartbeat routes use `Promise.all()` for independent queries
 9. **Bundle Optimization:** Heavy libraries (mapbox-gl, recharts) loaded via `next/dynamic` with SSR disabled; `optimizePackageImports` eliminates barrel file costs
-10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items
+10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items, polling-based custom icon loading (avoids `onLoad` timing issues with dynamic imports)
 11. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, and semantic form attributes
 12. **Shared Utilities:** `lib/fetcher.ts` (SWR fetcher with error handling) and `lib/format.ts` (number formatting) prevent code duplication
 
