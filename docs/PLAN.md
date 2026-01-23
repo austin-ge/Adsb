@@ -112,15 +112,59 @@ This pattern matches what ADSBExchange and other aggregators use.
 - [x] Update all branding (UI, scripts, Docker, docs)
 - [x] Document integration points with HangarTrak
 
-### Phase 6: Polish & Launch 🔄
+### Phase 6: Custom Mapbox Live Map 🔄
+
+Replace tar1090's default Leaflet map with a custom Mapbox-powered map for a polished, branded experience.
+
+#### 6a: Core Map (In Progress)
+- [x] Mapbox dark style base map
+- [x] Aircraft markers with heading rotation
+- [x] Altitude color coding (green → purple gradient)
+- [x] Click to select aircraft
+- [x] Aircraft info panel (callsign, altitude, speed, squawk, ICAO)
+- [x] Auto-refresh from readsb JSON (1s interval)
+- [x] Aircraft count overlay
+- [x] Altitude legend
+
+#### 6b: Enhanced Visualization
+- [x] Flight trails/history (full path, altitude-colored)
+- [x] Emergency squawk highlighting (7500/7600/7700 with pulse rings)
+- [ ] MLAT indicator (different icon style or badge for MLAT positions)
+- [ ] Aircraft type icons (jet, prop, helicopter, glider based on category)
+- [ ] Range rings (concentric circles from feeder location)
+- [ ] Distance/bearing from center
+
+#### 6c: Aircraft List Sidebar
+- [ ] Collapsible sidebar/panel showing all aircraft in a table
+- [ ] Columns: callsign, route, type, squawk, altitude, speed, RSSI
+- [ ] Click row to select aircraft on map (and vice versa)
+- [ ] Sort by column (click column header)
+- [ ] Highlight selected aircraft row
+- [ ] Show aircraft count in header
+- [ ] Emergency aircraft pinned to top with red highlight
+- [ ] Responsive: full sidebar on desktop, bottom drawer on mobile
+
+#### 6d: User Experience
+- [ ] URL sharing (selected aircraft hex in URL params)
+- [ ] Dark/light mode toggle
+- [ ] Metric/imperial toggle (ft↔m, kts↔km/h)
+- [ ] Keyboard shortcuts (zoom, pan, deselect)
+- [ ] Mobile responsive (bottom sheet info panel)
+
+#### 6e: Advanced Features
+- [ ] Historical playback (scrub through past positions)
+- [ ] Receiver coverage visualization (heatmap of received positions)
+- [ ] Aircraft filtering (by altitude, type, squawk)
+- [ ] Search by callsign/hex/registration
+
+### Phase 7: Polish & Launch
 - [ ] Leaderboard page (top feeders by stats)
 - [ ] Historical charts (feeder stats over time)
 - [ ] Rate limiting middleware
 - [ ] API documentation page
-- [ ] Mobile responsive improvements
 - [ ] Production deployment to Dokploy
 
-### Phase 7: HangarTrak Integration
+### Phase 8: HangarTrak Integration
 - [ ] Add HangarTrak Radar as data source in HangarTrak
 - [ ] Update fallback chain: Local → HangarTrak Radar → adsb.lol
 - [ ] Test end-to-end aircraft tracking

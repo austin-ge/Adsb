@@ -20,7 +20,11 @@ export const auth = betterAuth({
   },
   user: {
     additionalFields: {
-      apiKey: {
+      apiKeyHash: {
+        type: "string",
+        required: false,
+      },
+      apiKeyPrefix: {
         type: "string",
         required: false,
       },

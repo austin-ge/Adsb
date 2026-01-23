@@ -50,6 +50,7 @@ Each Pi runs a stats reporter service that POSTs to `/api/v1/feeders/:uuid/heart
 - Aircraft count with positions
 - Messages received (delta)
 - Positions received (delta)
+- Authorization: Bearer token (heartbeatToken generated at feeder creation, stored on Pi)
 
 This allows accurate per-feeder stats even though readsb aggregates all feeds together.
 
@@ -119,8 +120,8 @@ adsb/
 ```
 
 ### Database Models
-- **User** - Account with API key and tier
-- **Feeder** - Pi device sending data (UUID, stats, location)
+- **User** - Account with hashed API key (`apiKeyHash`), display prefix (`apiKeyPrefix`), and tier
+- **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location)
 - **FeederStats** - Historical statistics (hourly snapshots)
 - **Session/Account/Verification** - Better Auth tables
 
@@ -132,11 +133,13 @@ adsb/
 | PRO | 10000 req/min | Full API + priority (future) |
 
 ### Key Patterns
-- API key via `x-api-key` header
-- Rate limiting in `lib/api/middleware.ts`
+- API key via `x-api-key` header (hashed with SHA-256 for storage, looked up by hash)
+- Rate limiting in `lib/api/middleware.ts` (in-memory, per API key or IP)
+- Heartbeat auth via `Authorization: Bearer <heartbeatToken>` (timing-safe comparison)
 - Aircraft data from tar1090 JSON endpoint
 - Feeders connect via readsb `--net-connector`
 - Feeders self-report stats via heartbeat API
+- Input validation: feeder names restricted to `[a-zA-Z0-9 _\-\.]`, max 64 chars
 
 ## Implementation Status
 
@@ -152,6 +155,17 @@ adsb/
 - [x] API key generation
 - [x] Landing page
 - [x] HangarTrak branding
+
+### In Progress
+- [x] Custom Mapbox live map (Phase 6a core complete)
+- [x] Flight trails/history for selected aircraft
+- [x] Emergency squawk highlighting (7500/7600/7700)
+- [ ] MLAT indicator
+- [ ] Aircraft type icons (jet, prop, helicopter)
+- [ ] Range rings and distance/bearing
+- [x] Aircraft list sidebar (sortable table, click to select)
+- [ ] URL sharing, dark/light mode, metric/imperial toggles
+- [ ] Historical playback and receiver coverage visualization
 
 ### Remaining
 - [ ] Leaderboard page
@@ -175,6 +189,15 @@ GET /api/v1/aircraft              - All current aircraft
 GET /api/v1/aircraft/:hex         - Single aircraft by ICAO hex
 GET /api/v1/stats                 - Network statistics
 ```
+
+## Documentation Maintenance
+
+**IMPORTANT:** After every feature addition, bug fix, or significant change, update:
+
+1. **`CHANGELOG.md`** - Add entry under `[Unreleased]` with the appropriate category (Added, Changed, Fixed, Removed)
+2. **`SPEC.md`** - Update relevant sections if the change affects architecture, APIs, pages, or schema
+
+When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
 **Last Updated:** January 2026

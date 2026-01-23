@@ -115,7 +115,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.live.aircraft || 0}
+              {stats?.live?.aircraft || 0}
             </div>
             <p className="text-xs text-muted-foreground">on the network</p>
           </CardContent>
@@ -146,10 +146,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stats?.network.onlineFeeders || 0}
+              {stats?.network?.onlineFeeders || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              of {stats?.network.totalFeeders || 0} total feeders
+              of {stats?.network?.totalFeeders || 0} total feeders
             </p>
           </CardContent>
         </Card>
@@ -161,7 +161,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatNumber(stats?.network.messagesTotal || "0")}
+              {formatNumber(stats?.network?.messagesTotal || "0")}
             </div>
             <p className="text-xs text-muted-foreground">all time</p>
           </CardContent>
@@ -174,7 +174,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatNumber(stats?.network.aircraftTracked || 0)}
+              {formatNumber(stats?.network?.aircraftTracked || 0)}
             </div>
             <p className="text-xs text-muted-foreground">unique aircraft</p>
           </CardContent>

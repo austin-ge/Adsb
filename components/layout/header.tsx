@@ -45,11 +45,7 @@ export function Header() {
 
         <nav className="ml-auto flex items-center gap-4">
           <Button variant="ghost" size="sm" asChild>
-            <Link
-              href={process.env.NEXT_PUBLIC_MAP_URL || "/map"}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <Link href="/map">
               Live Map
             </Link>
           </Button>

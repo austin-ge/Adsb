@@ -23,8 +23,9 @@ model user {
   image         String?
 
   // Custom fields for ADS-B
-  apiKey  String?  @unique // Generated API key
-  apiTier ApiTier  @default(FREE)
+  apiKeyHash   String?  @unique // SHA-256 hash of the API key
+  apiKeyPrefix String?          // First 12 chars for display (e.g. "adsb_live_ab")
+  apiTier      ApiTier  @default(FREE)
 
   // Better Auth relations
   sessions session[]
@@ -85,11 +86,12 @@ model verification {
 
 // Feeder (Pi that sends ADS-B data)
 model Feeder {
-  id        String  @id @default(cuid())
-  uuid      String  @unique // Beast feeder UUID
-  name      String
-  latitude  Float?
-  longitude Float?
+  id             String  @id @default(cuid())
+  uuid           String  @unique // Beast feeder UUID
+  name           String
+  latitude       Float?
+  longitude      Float?
+  heartbeatToken String  @unique // Token for authenticating heartbeat requests
 
   // Owner
   userId String

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RateLimitResult } from "./rate-limit";
 import { getTierLimit } from "./tiers";
@@ -27,13 +28,13 @@ export async function validateApiRequest(
   let user: ApiUser | null = null;
   let tier: ApiTier = ApiTier.FREE;
 
-  // If API key provided, validate it
+  // If API key provided, validate it (hash first, then lookup)
   if (apiKey) {
+    const apiKeyHash = createHash("sha256").update(apiKey).digest("hex");
     const dbUser = await prisma.user.findUnique({
-      where: { apiKey },
+      where: { apiKeyHash },
       select: { id: true, email: true, apiTier: true },
     });
-    // Note: Prisma model is lowercase 'user' but client accessor is still 'user'
 
     if (!dbUser) {
       return {

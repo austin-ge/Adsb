@@ -27,7 +27,7 @@ import {
 
 interface ApiKeyInfo {
   hasApiKey: boolean;
-  maskedKey: string | null;
+  keyPrefix: string | null;
   tier: string;
 }
 
@@ -194,11 +194,11 @@ export default function ApiKeysPage() {
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-muted-foreground">
-                  Your API Key (masked)
+                  Your API Key
                 </label>
                 <div className="flex items-center gap-2 mt-1">
                   <code className="bg-muted px-3 py-2 rounded text-sm flex-1 font-mono">
-                    {data.maskedKey}
+                    {data.keyPrefix}
                   </code>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-server";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 
 // GET /api/feeders - List user's feeders
 export async function GET() {
@@ -61,8 +61,44 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate unique UUID for the feeder
+    // Validate name: only safe characters, max 64 chars
+    const trimmedName = name.trim();
+    if (trimmedName.length > 64) {
+      return NextResponse.json(
+        { error: "Name must be 64 characters or fewer" },
+        { status: 400 }
+      );
+    }
+    if (!/^[a-zA-Z0-9 _\-\.]+$/.test(trimmedName)) {
+      return NextResponse.json(
+        { error: "Name can only contain letters, numbers, spaces, hyphens, underscores, and dots" },
+        { status: 400 }
+      );
+    }
+
+    // Validate coordinates if provided
+    if (latitude !== undefined && latitude !== null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return NextResponse.json(
+          { error: "Latitude must be between -90 and 90" },
+          { status: 400 }
+        );
+      }
+    }
+    if (longitude !== undefined && longitude !== null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return NextResponse.json(
+          { error: "Longitude must be between -180 and 180" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Generate unique UUID and heartbeat token for the feeder
     const uuid = randomUUID();
+    const heartbeatToken = randomBytes(32).toString("hex");
 
     const feeder = await prisma.feeder.create({
       data: {
@@ -70,6 +106,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
+        heartbeatToken,
         userId: session.user.id,
       },
     });

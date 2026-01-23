@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-server";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 
 // Generate a secure API key
 function generateApiKey(): string {
   // Format: adsb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx (32 random hex chars)
   const randomPart = randomBytes(16).toString("hex");
   return `adsb_live_${randomPart}`;
+}
+
+// Hash an API key for storage
+export function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
 }
 
 // GET /api/user/api-key - Get current API key (masked)
@@ -17,23 +22,16 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { apiKey: true, apiTier: true },
+      select: { apiKeyHash: true, apiKeyPrefix: true, apiTier: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Mask the API key for display (show first 12 and last 4 chars)
-    let maskedKey: string | null = null;
-    if (user.apiKey) {
-      const key = user.apiKey;
-      maskedKey = `${key.substring(0, 12)}${"*".repeat(key.length - 16)}${key.substring(key.length - 4)}`;
-    }
-
     return NextResponse.json({
-      hasApiKey: !!user.apiKey,
-      maskedKey,
+      hasApiKey: !!user.apiKeyHash,
+      keyPrefix: user.apiKeyPrefix,
       tier: user.apiTier,
     });
   } catch (error) {
@@ -54,10 +52,12 @@ export async function POST() {
     const session = await requireAuth();
 
     const apiKey = generateApiKey();
+    const apiKeyHash = hashApiKey(apiKey);
+    const apiKeyPrefix = apiKey.substring(0, 14) + "...";
 
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { apiKey },
+      data: { apiKeyHash, apiKeyPrefix },
     });
 
     return NextResponse.json({
@@ -83,7 +83,7 @@ export async function DELETE() {
 
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { apiKey: null },
+      data: { apiKeyHash: null, apiKeyPrefix: null },
     });
 
     return NextResponse.json({

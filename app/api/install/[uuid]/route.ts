@@ -12,7 +12,7 @@ export async function GET(request: Request, { params }: RouteParams) {
   // Verify the feeder UUID exists
   const feeder = await prisma.feeder.findUnique({
     where: { uuid },
-    select: { id: true, name: true, uuid: true },
+    select: { id: true, name: true, uuid: true, heartbeatToken: true },
   });
 
   if (!feeder) {
@@ -30,6 +30,9 @@ exit 1
     );
   }
 
+  // Sanitize feeder name for safe shell embedding (strip anything except safe chars)
+  const safeName = feeder.name.replace(/[^a-zA-Z0-9 _\-\.]/g, "").slice(0, 64);
+
   // Get the server URL from environment or request
   const serverUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const serverHost = new URL(serverUrl).hostname;
@@ -37,7 +40,7 @@ exit 1
 
   const script = `#!/bin/bash
 # HangarTrak Radar - Feeder Setup Script
-# Feeder: ${feeder.name}
+# Feeder: ${safeName}
 # UUID: ${feeder.uuid}
 #
 # This script configures your Raspberry Pi to:
@@ -49,7 +52,8 @@ exit 1
 set -e
 
 FEEDER_UUID="${feeder.uuid}"
-FEEDER_NAME="${feeder.name}"
+FEEDER_NAME="${safeName}"
+HEARTBEAT_TOKEN="${feeder.heartbeatToken}"
 SERVER="${serverHost}"
 SERVER_URL="${serverUrl}"
 BEAST_PORT="${beastPort}"
@@ -74,7 +78,10 @@ fi
 
 # Create install directory
 mkdir -p "\$INSTALL_DIR"
+chmod 700 "\$INSTALL_DIR"
 echo "\$FEEDER_UUID" > "\$INSTALL_DIR/uuid"
+echo "\$HEARTBEAT_TOKEN" > "\$INSTALL_DIR/token"
+chmod 600 "\$INSTALL_DIR/token"
 
 #######################################
 # PART 1: Configure Beast Feed
@@ -154,6 +161,8 @@ cat > "\$INSTALL_DIR/feeder-stats.sh" << 'STATS_SCRIPT'
 REMOTE_URL="__SERVER_URL__/api/v1/feeders/__UUID__/heartbeat"
 UUID="__UUID__"
 UUID_FILE="/usr/local/share/hangartrak-radar/uuid"
+TOKEN_FILE="/usr/local/share/hangartrak-radar/token"
+HEARTBEAT_TOKEN=""
 
 JSON_PATHS=("/run/readsb" "/run/dump1090-fa" "/run/dump1090")
 WAIT_TIME=30
@@ -165,6 +174,16 @@ mkdir -p "\$TEMP_DIR" 2>/dev/null
 # Load UUID from file
 if [ -f "\$UUID_FILE" ]; then
     UUID=\$(cat "\$UUID_FILE")
+fi
+
+# Load heartbeat token from file
+if [ -f "\$TOKEN_FILE" ]; then
+    HEARTBEAT_TOKEN=\$(cat "\$TOKEN_FILE")
+fi
+
+if [ -z "\$HEARTBEAT_TOKEN" ]; then
+    echo "FATAL: No heartbeat token found. Re-run the install script."
+    exit 1
 fi
 
 # Validate UUID
@@ -232,7 +251,7 @@ while true; do
         POS_DELTA=0
     fi
 
-    RESPONSE=\$(curl -sS -m \$MAX_CURL_TIME -X POST -H "Content-Type: application/json" -d "\$PAYLOAD" "\$REMOTE_URL" 2>&1)
+    RESPONSE=\$(curl -sS -m \$MAX_CURL_TIME -X POST -H "Content-Type: application/json" -H "Authorization: Bearer \$HEARTBEAT_TOKEN" -d "\$PAYLOAD" "\$REMOTE_URL" 2>&1)
     RV=\$?
 
     if [ \$RV -eq 0 ] && echo "\$RESPONSE" | grep -q '"success":true'; then

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit } from "@/lib/api/rate-limit";
 
 interface RouteParams {
   params: Promise<{ uuid: string }>;
@@ -39,6 +40,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid UUID format" }, { status: 400 });
   }
 
+  // Rate limit: 10 heartbeats per minute per UUID
+  const rateLimit = checkRateLimit(`heartbeat:${uuid}`, 10);
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded", reset: new Date(rateLimit.reset).toISOString() },
+      { status: 429 }
+    );
+  }
+
+  // Validate heartbeat token from Authorization header
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return NextResponse.json(
+      { error: "Missing or invalid Authorization header" },
+      { status: 401 }
+    );
+  }
+  const token = authHeader.slice(7);
+
   // Find the feeder
   const feeder = await prisma.feeder.findUnique({
     where: { uuid },
@@ -49,6 +69,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Feeder not found" }, { status: 404 });
   }
 
+  // Verify heartbeat token using timing-safe comparison
+  const { timingSafeEqual } = await import("crypto");
+  const tokenBuffer = Buffer.from(token);
+  const expectedBuffer = Buffer.from(feeder.heartbeatToken);
+  if (
+    tokenBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(tokenBuffer, expectedBuffer)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid heartbeat token" },
+      { status: 403 }
+    );
+  }
+
   // Parse the payload
   let payload: HeartbeatPayload;
   try {
@@ -57,11 +91,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
-  // Calculate stats from payload
-  const aircraftCount = payload.aircraft_count ?? payload.aircraft?.length ?? 0;
-  const aircraftWithPos = payload.aircraft_with_pos ?? 0;
-  const messages = payload.messages ?? 0;
-  const positions = payload.positions ?? 0;
+  // Calculate stats from payload with bounds checking
+  const aircraftCount = Math.max(0, Math.min(10000, payload.aircraft_count ?? payload.aircraft?.length ?? 0));
+  const aircraftWithPos = Math.max(0, Math.min(10000, payload.aircraft_with_pos ?? 0));
+  const messages = Math.max(0, Math.min(1000000, payload.messages ?? 0));
+  const positions = Math.max(0, Math.min(1000000, payload.positions ?? 0));
 
   // Calculate RSSI if aircraft array provided
   let rssiAvg = payload.rssi;

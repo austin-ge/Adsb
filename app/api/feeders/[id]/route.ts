@@ -80,15 +80,50 @@ export async function PATCH(request: Request, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      updateData.name = name.trim();
+      const trimmedName = name.trim();
+      if (trimmedName.length > 64) {
+        return NextResponse.json(
+          { error: "Name must be 64 characters or fewer" },
+          { status: 400 }
+        );
+      }
+      if (!/^[a-zA-Z0-9 _\-\.]+$/.test(trimmedName)) {
+        return NextResponse.json(
+          { error: "Name can only contain letters, numbers, spaces, hyphens, underscores, and dots" },
+          { status: 400 }
+        );
+      }
+      updateData.name = trimmedName;
     }
 
     if (latitude !== undefined) {
-      updateData.latitude = latitude ? parseFloat(latitude) : null;
+      if (latitude === null) {
+        updateData.latitude = null;
+      } else {
+        const lat = parseFloat(latitude);
+        if (isNaN(lat) || lat < -90 || lat > 90) {
+          return NextResponse.json(
+            { error: "Latitude must be between -90 and 90" },
+            { status: 400 }
+          );
+        }
+        updateData.latitude = lat;
+      }
     }
 
     if (longitude !== undefined) {
-      updateData.longitude = longitude ? parseFloat(longitude) : null;
+      if (longitude === null) {
+        updateData.longitude = null;
+      } else {
+        const lng = parseFloat(longitude);
+        if (isNaN(lng) || lng < -180 || lng > 180) {
+          return NextResponse.json(
+            { error: "Longitude must be between -180 and 180" },
+            { status: 400 }
+          );
+        }
+        updateData.longitude = lng;
+      }
     }
 
     const feeder = await prisma.feeder.update({
