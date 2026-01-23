@@ -1,6 +1,8 @@
 "use client";
 
 import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+import { formatNumber } from "@/lib/format";
 import { useSession } from "@/lib/auth-client";
 import { Radio, Plane, Signal, Clock, Trophy, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,16 +30,6 @@ interface NetworkStats {
   };
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function formatNumber(num: string | number): string {
-  const n = typeof num === "string" ? parseInt(num, 10) : num;
-  if (isNaN(n)) return "0";
-  if (n >= 1000000000) return (n / 1000000000).toFixed(2) + "B";
-  if (n >= 1000000) return (n / 1000000).toFixed(2) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-  return n.toLocaleString();
-}
 
 function formatLastSeen(lastSeen: string | null): string {
   if (!lastSeen) return "Never";
@@ -87,10 +79,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">My Feeders</CardTitle>
-            <Radio className="h-4 w-4 text-muted-foreground" />
+            <Radio className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{onlineFeeders}</div>
+            <div className="text-2xl font-bold tabular-nums">{onlineFeeders}</div>
             <p className="text-xs text-muted-foreground">
               of {totalFeeders} online
             </p>
@@ -100,10 +92,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">My Messages</CardTitle>
-            <Signal className="h-4 w-4 text-muted-foreground" />
+            <Signal className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(totalMessages)}</div>
+            <div className="text-2xl font-bold tabular-nums">{formatNumber(totalMessages)}</div>
             <p className="text-xs text-muted-foreground">total contributed</p>
           </CardContent>
         </Card>
@@ -111,10 +103,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Live Aircraft</CardTitle>
-            <Plane className="h-4 w-4 text-muted-foreground" />
+            <Plane className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold tabular-nums">
               {stats?.live?.aircraft || 0}
             </div>
             <p className="text-xs text-muted-foreground">on the network</p>
@@ -124,10 +116,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">API Tier</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold tabular-nums">
               {apiTierDisplay[userTier].label}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -142,10 +134,10 @@ export default function DashboardPage() {
         <Card className="bg-primary/5 border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Network Feeders</CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
+            <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold tabular-nums">
               {stats?.network?.onlineFeeders || 0}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -157,10 +149,10 @@ export default function DashboardPage() {
         <Card className="bg-primary/5 border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Network Messages</CardTitle>
-            <Signal className="h-4 w-4 text-primary" />
+            <Signal className="h-4 w-4 text-primary" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold tabular-nums">
               {formatNumber(stats?.network?.messagesTotal || "0")}
             </div>
             <p className="text-xs text-muted-foreground">all time</p>
@@ -170,10 +162,10 @@ export default function DashboardPage() {
         <Card className="bg-primary/5 border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Aircraft Tracked</CardTitle>
-            <Plane className="h-4 w-4 text-primary" />
+            <Plane className="h-4 w-4 text-primary" aria-hidden="true" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold tabular-nums">
               {formatNumber(stats?.network?.aircraftTracked || 0)}
             </div>
             <p className="text-xs text-muted-foreground">unique aircraft</p>
@@ -193,7 +185,7 @@ export default function DashboardPage() {
           <CardContent>
             {!feeders || feeders.length === 0 ? (
               <div className="text-center py-8">
-                <Radio className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                <Radio className="h-12 w-12 mx-auto text-muted-foreground/50" aria-hidden="true" />
                 <h3 className="mt-4 text-lg font-semibold">No feeders yet</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Register a feeder to start contributing ADS-B data
@@ -215,6 +207,7 @@ export default function DashboardPage() {
                         className={`h-4 w-4 ${
                           feeder.isOnline ? "text-green-500" : "text-muted-foreground"
                         }`}
+                        aria-hidden="true"
                       />
                       <div>
                         <p className="font-medium">{feeder.name}</p>
@@ -241,25 +234,25 @@ export default function DashboardPage() {
           <CardContent className="space-y-3">
             <Button variant="outline" className="w-full justify-start" asChild>
               <Link href="/feeders">
-                <Radio className="mr-2 h-4 w-4" />
+                <Radio className="mr-2 h-4 w-4" aria-hidden="true" />
                 Register a new feeder
               </Link>
             </Button>
             <Button variant="outline" className="w-full justify-start" asChild>
               <Link href="/api-keys">
-                <Signal className="mr-2 h-4 w-4" />
+                <Signal className="mr-2 h-4 w-4" aria-hidden="true" />
                 Generate API key
               </Link>
             </Button>
             <Button variant="outline" className="w-full justify-start" asChild>
               <Link href="/stats">
-                <TrendingUp className="mr-2 h-4 w-4" />
+                <TrendingUp className="mr-2 h-4 w-4" aria-hidden="true" />
                 View network statistics
               </Link>
             </Button>
             <Button variant="outline" className="w-full justify-start" asChild>
               <Link href="/leaderboard">
-                <Trophy className="mr-2 h-4 w-4" />
+                <Trophy className="mr-2 h-4 w-4" aria-hidden="true" />
                 View leaderboard
               </Link>
             </Button>
@@ -268,7 +261,7 @@ export default function DashboardPage() {
                 href={process.env.NEXT_PUBLIC_MAP_URL || "/map"}
                 target="_blank"
               >
-                <Plane className="mr-2 h-4 w-4" />
+                <Plane className="mr-2 h-4 w-4" aria-hidden="true" />
                 View live map
               </Link>
             </Button>

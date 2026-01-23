@@ -109,31 +109,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    // Update feeder stats
-    const updatedFeeder = await prisma.feeder.update({
-      where: { id: feeder.id },
-      data: {
-        // Increment totals
-        messagesTotal: {
-          increment: messages > 0 ? BigInt(messages) : BigInt(0),
+    // Update feeder stats and auto-upgrade user tier in parallel
+    const [updatedFeeder] = await Promise.all([
+      prisma.feeder.update({
+        where: { id: feeder.id },
+        data: {
+          messagesTotal: {
+            increment: messages > 0 ? BigInt(messages) : BigInt(0),
+          },
+          positionsTotal: {
+            increment: positions > 0 ? BigInt(positions) : BigInt(0),
+          },
+          aircraftSeen: Math.max(feeder.aircraftSeen, aircraftCount),
+          lastSeen: new Date(),
+          isOnline: true,
         },
-        positionsTotal: {
-          increment: positions > 0 ? BigInt(positions) : BigInt(0),
-        },
-        // Update current stats
-        aircraftSeen: Math.max(feeder.aircraftSeen, aircraftCount),
-        lastSeen: new Date(),
-        isOnline: true,
-      },
-    });
-
-    // Auto-upgrade user to FEEDER tier if currently FREE
-    if (feeder.user.apiTier === "FREE") {
-      await prisma.user.update({
-        where: { id: feeder.user.id },
-        data: { apiTier: "FEEDER" },
-      });
-    }
+      }),
+      feeder.user.apiTier === "FREE"
+        ? prisma.user.update({
+            where: { id: feeder.user.id },
+            data: { apiTier: "FEEDER" },
+          })
+        : Promise.resolve(null),
+    ]);
 
     return NextResponse.json({
       success: true,

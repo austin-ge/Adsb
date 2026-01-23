@@ -35,10 +35,18 @@ export const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: [
-    process.env.BETTER_AUTH_URL || "http://localhost:3000",
-  ],
+  trustedOrigins: [process.env.BETTER_AUTH_URL].filter(Boolean) as string[],
+  advanced: {
+    useSecureCookies: process.env.NODE_ENV === "production",
+  },
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 10,
+  },
 });
 
 // Export type for client
 export type Auth = typeof auth;
+export type Session = typeof auth.$Infer.Session;
+export type User = typeof auth.$Infer.Session.user;

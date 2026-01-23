@@ -5,57 +5,57 @@ import { fetchAircraftData } from "@/lib/readsb";
 // GET /api/stats - Get network-wide statistics
 export async function GET() {
   try {
-    // Get feeder counts
-    const [totalFeeders, onlineFeeders] = await Promise.all([
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Run all independent queries in parallel
+    const [
+      totalFeeders,
+      onlineFeeders,
+      totals,
+      liveData,
+      totalUsers,
+      last24hStats,
+      hourlyStats,
+    ] = await Promise.all([
       prisma.feeder.count(),
       prisma.feeder.count({ where: { isOnline: true } }),
+      prisma.feeder.aggregate({
+        _sum: {
+          messagesTotal: true,
+          positionsTotal: true,
+          aircraftSeen: true,
+        },
+      }),
+      fetchAircraftData(),
+      prisma.user.count(),
+      prisma.feederStats.aggregate({
+        where: {
+          timestamp: { gte: oneDayAgo },
+        },
+        _sum: {
+          messages: true,
+          positions: true,
+        },
+      }),
+      prisma.$queryRaw<
+        { hour: Date; messages: bigint; positions: bigint; feeders: bigint }[]
+      >`
+        SELECT
+          date_trunc('hour', timestamp) as hour,
+          SUM(messages) as messages,
+          SUM(positions) as positions,
+          COUNT(DISTINCT "feederId") as feeders
+        FROM "FeederStats"
+        WHERE timestamp >= ${oneDayAgo}
+        GROUP BY date_trunc('hour', timestamp)
+        ORDER BY hour ASC
+      `,
     ]);
 
-    // Get aggregated totals
-    const totals = await prisma.feeder.aggregate({
-      _sum: {
-        messagesTotal: true,
-        positionsTotal: true,
-        aircraftSeen: true,
-      },
-    });
-
-    // Get live aircraft count from tar1090
-    const liveData = await fetchAircraftData();
     const liveAircraft = liveData?.aircraft?.length || 0;
     const liveWithPosition = liveData?.aircraft?.filter(
       (a) => a.lat !== undefined && a.lon !== undefined
     ).length || 0;
-
-    // Get user count
-    const totalUsers = await prisma.user.count();
-
-    // Get stats for last 24 hours
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const last24hStats = await prisma.feederStats.aggregate({
-      where: {
-        timestamp: { gte: oneDayAgo },
-      },
-      _sum: {
-        messages: true,
-        positions: true,
-      },
-    });
-
-    // Get hourly stats for chart (last 24 hours)
-    const hourlyStats = await prisma.$queryRaw<
-      { hour: Date; messages: bigint; positions: bigint; feeders: bigint }[]
-    >`
-      SELECT
-        date_trunc('hour', timestamp) as hour,
-        SUM(messages) as messages,
-        SUM(positions) as positions,
-        COUNT(DISTINCT "feederId") as feeders
-      FROM "FeederStats"
-      WHERE timestamp >= ${oneDayAgo}
-      GROUP BY date_trunc('hour', timestamp)
-      ORDER BY hour ASC
-    `;
 
     const chartData = hourlyStats.map((row) => ({
       hour: row.hour.toISOString(),

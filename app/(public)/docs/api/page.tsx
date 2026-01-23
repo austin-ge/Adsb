@@ -17,7 +17,7 @@ export default function ApiDocsPage() {
               href="/"
               className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               Back to Home
             </Link>
             <Link href="/login">
@@ -31,7 +31,7 @@ export default function ApiDocsPage() {
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Title */}
           <div>
-            <h1 className="text-3xl font-bold">API Documentation</h1>
+            <h1 className="text-3xl font-bold text-balance">API Documentation</h1>
             <p className="text-muted-foreground mt-2">
               Access real-time ADS-B flight data through our REST API
             </p>
@@ -41,7 +41,7 @@ export default function ApiDocsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
+                <Key className="h-5 w-5" aria-hidden="true" />
                 Authentication
               </CardTitle>
             </CardHeader>
@@ -115,13 +115,13 @@ export default function ApiDocsPage() {
 
           {/* Endpoints */}
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Endpoints</h2>
+            <h2 className="text-2xl font-bold text-balance">Endpoints</h2>
 
             {/* GET /api/v1/aircraft */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Plane className="h-5 w-5" />
+                  <Plane className="h-5 w-5" aria-hidden="true" />
                   <span className="font-mono text-lg">
                     GET /api/v1/aircraft
                   </span>
@@ -202,7 +202,7 @@ export default function ApiDocsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Plane className="h-5 w-5" />
+                  <Plane className="h-5 w-5" aria-hidden="true" />
                   <span className="font-mono text-lg">
                     GET /api/v1/aircraft/:hex
                   </span>
@@ -237,7 +237,7 @@ export default function ApiDocsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
+                  <BarChart3 className="h-5 w-5" aria-hidden="true" />
                   <span className="font-mono text-lg">GET /api/v1/stats</span>
                 </CardTitle>
               </CardHeader>
@@ -273,7 +273,7 @@ export default function ApiDocsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Radio className="h-5 w-5" />
+                  <Radio className="h-5 w-5" aria-hidden="true" />
                   <span className="font-mono text-lg">GET /api/v1/feeders</span>
                 </CardTitle>
               </CardHeader>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+import { formatNumber } from "@/lib/format";
 import { Plus, Radio, Copy, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,18 +35,6 @@ interface Feeder {
   createdAt: string;
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function formatNumber(num: string | number): string {
-  const n = typeof num === "string" ? parseInt(num, 10) : num;
-  if (n >= 1000000) {
-    return (n / 1000000).toFixed(1) + "M";
-  }
-  if (n >= 1000) {
-    return (n / 1000).toFixed(1) + "K";
-  }
-  return n.toString();
-}
 
 function formatLastSeen(lastSeen: string | null): string {
   if (!lastSeen) return "Never";
@@ -135,7 +125,7 @@ export default function FeedersPage() {
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
               Register Feeder
             </Button>
           </DialogTrigger>
@@ -192,7 +182,7 @@ export default function FeedersPage() {
                   </div>
                   <DialogFooter>
                     <Button type="submit" disabled={isCreating || !newFeederName}>
-                      {isCreating ? "Creating..." : "Create Feeder"}
+                      {isCreating ? "Creating\u2026" : "Create Feeder"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -216,6 +206,7 @@ export default function FeedersPage() {
                       variant="ghost"
                       className="absolute top-2 right-2"
                       onClick={handleCopyCommand}
+                      aria-label="Copy install command"
                     >
                       {copied ? (
                         <Check className="h-4 w-4 text-green-500" />
@@ -244,7 +235,7 @@ export default function FeedersPage() {
                   <Button asChild>
                     <Link href={`/feeders/${createdFeeder.id}`}>
                       View Feeder
-                      <ExternalLink className="ml-2 h-4 w-4" />
+                      <ExternalLink className="ml-2 h-4 w-4" aria-hidden="true" />
                     </Link>
                   </Button>
                 </DialogFooter>
@@ -273,13 +264,13 @@ export default function FeedersPage() {
       ) : feeders.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Radio className="h-12 w-12 text-muted-foreground mb-4" />
+            <Radio className="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
             <h3 className="text-lg font-semibold mb-2">No feeders yet</h3>
             <p className="text-muted-foreground text-center mb-4">
               Register your first feeder to start contributing to our network.
             </p>
             <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
               Register Feeder
             </Button>
           </CardContent>

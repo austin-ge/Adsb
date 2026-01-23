@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 import Link from "next/link";
 import {
   Key,
@@ -30,8 +31,6 @@ interface ApiKeyInfo {
   keyPrefix: string | null;
   tier: string;
 }
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const tierInfo = {
   FREE: {
@@ -143,7 +142,7 @@ export default function ApiKeysPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
+              <Shield className="h-5 w-5" aria-hidden="true" />
               Your API Tier
             </CardTitle>
             <Badge variant={currentTier.color}>{currentTier.label}</Badge>
@@ -180,7 +179,7 @@ export default function ApiKeysPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
+            <Key className="h-5 w-5" aria-hidden="true" />
             API Key
           </CardTitle>
         </CardHeader>
@@ -210,6 +209,7 @@ export default function ApiKeysPage() {
                 >
                   <RefreshCw
                     className={`mr-2 h-4 w-4 ${isGenerating ? "animate-spin" : ""}`}
+                    aria-hidden="true"
                   />
                   Regenerate Key
                 </Button>
@@ -217,7 +217,7 @@ export default function ApiKeysPage() {
                   variant="destructive"
                   onClick={() => setShowRevokeDialog(true)}
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                   Revoke Key
                 </Button>
               </div>
@@ -233,8 +233,8 @@ export default function ApiKeysPage() {
                 using our API.
               </p>
               <Button onClick={handleGenerateKey} disabled={isGenerating}>
-                <Key className="mr-2 h-4 w-4" />
-                {isGenerating ? "Generating..." : "Generate API Key"}
+                <Key className="mr-2 h-4 w-4" aria-hidden="true" />
+                {isGenerating ? "Generating\u2026" : "Generate API Key"}
               </Button>
             </div>
           )}
@@ -258,7 +258,7 @@ export default function ApiKeysPage() {
           <div className="flex gap-2">
             <Link href="/docs/api">
               <Button variant="outline">
-                <ExternalLink className="mr-2 h-4 w-4" />
+                <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
                 View API Documentation
               </Button>
             </Link>
@@ -289,6 +289,7 @@ export default function ApiKeysPage() {
                 variant="ghost"
                 className="absolute top-2 right-2"
                 onClick={handleCopyKey}
+                aria-label="Copy API key"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />
@@ -298,7 +299,7 @@ export default function ApiKeysPage() {
               </Button>
             </div>
             <div className="mt-4 flex items-start gap-2 text-sm text-yellow-600 dark:text-yellow-500">
-              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
               <p>
                 Store this key securely. You won&apos;t be able to see it again.
                 If you lose it, you&apos;ll need to generate a new one.
@@ -335,7 +336,7 @@ export default function ApiKeysPage() {
               onClick={handleRevokeKey}
               disabled={isRevoking}
             >
-              {isRevoking ? "Revoking..." : "Revoke Key"}
+              {isRevoking ? "Revoking\u2026" : "Revoke Key"}
             </Button>
           </DialogFooter>
         </DialogContent>

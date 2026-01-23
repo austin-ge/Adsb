@@ -99,8 +99,9 @@ export function AircraftSidebar({
             onClick={onToggle}
             className="text-gray-400 hover:text-white p-1"
             title="Collapse sidebar"
+            aria-label="Collapse sidebar"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path
                 d="M10 12L6 8L10 4"
                 stroke="currentColor"
@@ -116,10 +117,11 @@ export function AircraftSidebar({
         <div className="px-3 py-2 border-b border-gray-700">
           <input
             type="text"
-            placeholder="Search callsign, reg, hex..."
+            placeholder="Search callsign, reg, hex\u2026"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-gray-400"
+            className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
+            aria-label="Search aircraft"
           />
         </div>
 
@@ -129,7 +131,8 @@ export function AircraftSidebar({
           <select
             value={sortField}
             onChange={(e) => setSortField(e.target.value as SortField)}
-            className="bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus:border-gray-400"
+            className="bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
+            aria-label="Sort aircraft"
           >
             <option value="distance">Distance</option>
             <option value="callsign">Callsign</option>
@@ -140,7 +143,7 @@ export function AircraftSidebar({
         </div>
 
         {/* Aircraft list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
           {filteredAndSorted.length === 0 ? (
             <div className="px-3 py-4 text-sm text-gray-500 text-center">
               {search ? "No aircraft match your search" : "No aircraft"}
@@ -159,6 +162,7 @@ export function AircraftSidebar({
                       ? "bg-blue-900/40 border-l-2 border-l-blue-500"
                       : "hover:bg-gray-800/60"
                   }`}
+                  style={{ contentVisibility: 'auto', containIntrinsicSize: '0 52px' }}
                 >
                   <div className="flex items-center gap-2">
                     {/* Altitude color dot */}
@@ -203,8 +207,9 @@ export function AircraftSidebar({
           onClick={onToggle}
           className="absolute top-1/2 left-0 -translate-y-1/2 hidden md:flex items-center justify-center w-6 h-12 bg-gray-900/90 backdrop-blur-sm border border-l-0 border-gray-700 rounded-r-md text-gray-400 hover:text-white z-10"
           title="Show aircraft list"
+          aria-label="Expand sidebar"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path
               d="M6 4L10 8L6 12"
               stroke="currentColor"

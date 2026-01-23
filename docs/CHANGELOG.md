@@ -16,11 +16,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Heartbeat token authentication for feeder stats reporting (Bearer token in Authorization header)
 - Rate limiting on heartbeat endpoint (10 req/min per feeder) and map endpoint (60 req/min per IP)
 - Input validation for feeder names (alphanumeric + safe chars, max 64 chars) and coordinates (lat/lng bounds)
+- Global `prefers-reduced-motion` support in CSS (disables all animations for users who prefer reduced motion)
+- Skip-to-main-content links in root and dashboard layouts for keyboard navigation
+- `aria-hidden="true"` on all decorative icons (~50 instances across 11 files)
+- `aria-label` on all icon-only buttons (copy, close, sidebar toggle, user menu)
+- `aria-live="polite"` on form error messages for screen reader announcements
+- `autoComplete` attributes on all auth form inputs (email, password, name)
+- `focus-visible:ring` focus styles on map sidebar search and sort controls
+- `content-visibility: auto` on aircraft sidebar list items for rendering performance
+- `overscroll-behavior: contain` on dialog and scrollable sidebar
+- `<meta name="theme-color">` and `color-scheme` on HTML root
+- `tabular-nums` on all numeric stat displays for consistent alignment
+- `text-wrap: balance` on page headings
+- Shared `lib/fetcher.ts` with error handling for SWR data fetching
+- Shared `lib/format.ts` with `formatNumber()` utility
+- Exported `Session` and `User` types from Better Auth `$Infer`
+- Coding standards section in `CLAUDE.md` referencing Vercel React, Better Auth, and Web Interface Guidelines skills
 
 ### Changed
 - API keys are now stored as SHA-256 hashes in the database (plaintext key shown only once on generation)
 - Install script sanitizes feeder names before embedding in shell scripts to prevent command injection
 - Feeder creation generates a unique `heartbeatToken` stored on the Pi during install
+- Stats API route now runs all 7 queries in parallel via `Promise.all()` (3-5x faster)
+- Heartbeat route runs feeder update and user tier upgrade in parallel
+- `getServerSession` wrapped in `React.cache()` for per-request deduplication
+- `fetchAircraftData` wrapped in `React.cache()` to prevent duplicate fetches
+- Map page uses SWR with `refreshInterval: 1000` instead of raw `setInterval`
+- Map page pulse animation uses `requestAnimationFrame` + Mapbox API instead of React state (eliminates 20 re-renders/sec)
+- Map page callbacks stabilized with refs and functional setState (no unnecessary re-renders)
+- Map page loaded via `next/dynamic` with `ssr: false` (700KB mapbox-gl deferred)
+- Stats page charts loaded via `next/dynamic` (200KB recharts deferred)
+- Added `optimizePackageImports` for `lucide-react` and `recharts` in `next.config.ts`
+- Leaderboard filters (period, sort) now synced to URL query params (shareable, back-button works)
+- All loading text uses proper Unicode ellipsis character (\u2026) instead of three dots
+- Removed 6 duplicate `fetcher` function declarations across dashboard pages
+- Removed 5 duplicate `formatNumber` function declarations across dashboard pages
+- Better Auth: added `advanced.useSecureCookies` for production
+- Better Auth: added rate limiting (10 req/60s) on auth endpoints
+- Better Auth: fixed `trustedOrigins` to not fall back to localhost in production
 
 ---
 

@@ -4,6 +4,8 @@ import { useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+import { formatNumber } from "@/lib/format";
 import {
   ArrowLeft,
   Copy,
@@ -52,21 +54,6 @@ interface Feeder {
   stats: FeederStats[];
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function formatNumber(num: string | number): string {
-  const n = typeof num === "string" ? parseInt(num, 10) : num;
-  if (n >= 1000000000) {
-    return (n / 1000000000).toFixed(2) + "B";
-  }
-  if (n >= 1000000) {
-    return (n / 1000000).toFixed(2) + "M";
-  }
-  if (n >= 1000) {
-    return (n / 1000).toFixed(1) + "K";
-  }
-  return n.toLocaleString();
-}
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString(undefined, {
@@ -190,7 +177,7 @@ export default function FeederDetailPage({
           href="/feeders"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
           Back to Feeders
         </Link>
         <Card>
@@ -230,14 +217,14 @@ export default function FeederDetailPage({
           href="/feeders"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
           Back to Feeders
         </Link>
         <div className="flex items-center gap-2">
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" onClick={handleOpenEdit}>
-                <Settings className="mr-2 h-4 w-4" />
+                <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
                 Edit
               </Button>
             </DialogTrigger>
@@ -284,7 +271,7 @@ export default function FeederDetailPage({
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={isUpdating || !editName}>
-                    {isUpdating ? "Saving..." : "Save Changes"}
+                    {isUpdating ? "Saving\u2026" : "Save Changes"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -294,7 +281,7 @@ export default function FeederDetailPage({
           <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
             <DialogTrigger asChild>
               <Button variant="destructive" size="sm">
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                 Delete
               </Button>
             </DialogTrigger>
@@ -318,7 +305,7 @@ export default function FeederDetailPage({
                   onClick={handleDeleteFeeder}
                   disabled={isDeleting}
                 >
-                  {isDeleting ? "Deleting..." : "Delete Feeder"}
+                  {isDeleting ? "Deleting\u2026" : "Delete Feeder"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -396,7 +383,7 @@ export default function FeederDetailPage({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Radio className="h-5 w-5" />
+              <Radio className="h-5 w-5" aria-hidden="true" />
               Feeder Details
             </CardTitle>
           </CardHeader>
@@ -407,7 +394,7 @@ export default function FeederDetailPage({
                 <code className="bg-muted px-2 py-1 rounded text-sm flex-1 overflow-hidden text-ellipsis">
                   {feeder.uuid}
                 </code>
-                <Button size="sm" variant="ghost" onClick={handleCopyUuid}>
+                <Button size="sm" variant="ghost" onClick={handleCopyUuid} aria-label="Copy UUID">
                   {copied ? (
                     <Check className="h-4 w-4 text-green-500" />
                   ) : (
@@ -420,7 +407,7 @@ export default function FeederDetailPage({
               <div>
                 <Label className="text-muted-foreground">Location</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <MapPin className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>
                     {feeder.latitude?.toFixed(4)}, {feeder.longitude?.toFixed(4)}
                   </span>
@@ -447,6 +434,7 @@ export default function FeederDetailPage({
                 variant="ghost"
                 className="absolute top-1 right-1"
                 onClick={handleCopyCommand}
+                aria-label="Copy install command"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-green-500" />

@@ -60,6 +60,26 @@ This allows accurate per-feeder stats even though readsb aggregates all feeds to
 - **Aggregator:** readsb (network-only mode), tar1090
 - **Infrastructure:** Dokploy on Hostinger VPS
 
+## Coding Standards
+
+All React and Next.js code should follow the **Vercel React Best Practices** skill (`/vercel-react-best-practices`). Key priorities:
+
+1. **Eliminate waterfalls** - Use `Promise.all()` for independent async ops, defer awaits, use Suspense boundaries
+2. **Optimize bundle size** - Import directly (no barrel files), use `next/dynamic` for heavy components, defer third-party scripts
+3. **Server-side performance** - Use `React.cache()` for dedup, minimize client serialization, parallelize fetches
+4. **Client-side data fetching** - Use SWR for dedup and caching
+5. **Minimize re-renders** - Use functional setState, derived state, `startTransition` for non-urgent updates
+
+All authentication code should follow the **Better Auth Best Practices** skill (`/better-auth-best-practices`). Key points:
+
+- Use `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` env vars (don't hardcode in config)
+- Import plugins from dedicated paths (e.g., `better-auth/plugins/two-factor`, not `better-auth/plugins`)
+- Re-run `npx @better-auth/cli@latest generate` after adding/changing plugins
+- Use ORM model names in config, not underlying table names
+- Reference [better-auth.com/docs](https://better-auth.com/docs) for latest API
+
+UI components should comply with the **Web Interface Guidelines** skill (`/web-design-guidelines`). Run this skill against UI files to check for accessibility, semantic HTML, interaction patterns, and design best practices.
+
 ## Quick Reference
 
 ### Essential Environment Variables
@@ -103,9 +123,12 @@ adsb/
 │   └── ui/                  # shadcn/ui
 ├── lib/                     # Utilities
 │   ├── prisma.ts            # Database client
-│   ├── auth.ts              # Better Auth config
+│   ├── auth.ts              # Better Auth config (exports Session/User types)
 │   ├── auth-client.ts       # Better Auth React client
-│   ├── readsb.ts            # Aircraft data fetching
+│   ├── auth-server.ts       # Server session helpers (React.cache wrapped)
+│   ├── readsb.ts            # Aircraft data fetching (React.cache wrapped)
+│   ├── fetcher.ts           # Shared SWR fetcher with error handling
+│   ├── format.ts            # Shared formatNumber utility
 │   └── api/                 # API middleware, rate limiting
 ├── prisma/                  # Database schema
 ├── docker/
@@ -168,10 +191,8 @@ adsb/
 - [ ] Historical playback and receiver coverage visualization
 
 ### Remaining
-- [ ] Leaderboard page
 - [ ] Historical charts (feeder stats over time)
-- [ ] Rate limiting middleware
-- [ ] API documentation page
+- [ ] API documentation page (content)
 - [ ] HangarTrak integration (update HangarTrak to use this API)
 - [ ] Production deployment to Dokploy
 

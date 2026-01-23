@@ -39,7 +39,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center px-4 md:px-6">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-          <Plane className="h-5 w-5 text-primary" />
+          <Plane className="h-5 w-5 text-primary" aria-hidden="true" />
           <span className="hidden sm:inline">HangarTrak Radar</span>
         </Link>
 
@@ -52,7 +52,7 @@ export function Header() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full" aria-label="User menu">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>
                     {getInitials(session?.user?.name)}
@@ -74,19 +74,19 @@ export function Header() {
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/dashboard">
-                  <User className="mr-2 h-4 w-4" />
+                  <User className="mr-2 h-4 w-4" aria-hidden="true" />
                   Dashboard
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">
-                  <Settings className="mr-2 h-4 w-4" />
+                  <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
                   Settings
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="mr-2 h-4 w-4" />
+                <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>

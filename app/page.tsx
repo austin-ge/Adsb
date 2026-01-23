@@ -8,7 +8,7 @@ export default function Home() {
       {/* Navigation */}
       <nav className="container mx-auto px-4 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold text-lg">
-          <Plane className="h-6 w-6 text-primary" />
+          <Plane className="h-6 w-6 text-primary" aria-hidden="true" />
           HangarTrak Radar
         </Link>
         <div className="flex items-center gap-4">
@@ -24,7 +24,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-16">
         {/* Hero Section */}
         <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="text-5xl font-bold text-gray-900 mb-4 text-balance">
             Community Flight Tracking
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
@@ -49,15 +49,15 @@ export default function Home() {
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           <div className="bg-white rounded-xl shadow-sm p-6 text-center border">
-            <div className="text-4xl font-bold text-primary mb-2">0</div>
+            <div className="text-4xl font-bold text-primary mb-2 tabular-nums">0</div>
             <div className="text-gray-600">Active Feeders</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 text-center border">
-            <div className="text-4xl font-bold text-primary mb-2">0</div>
+            <div className="text-4xl font-bold text-primary mb-2 tabular-nums">0</div>
             <div className="text-gray-600">Aircraft Tracked</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 text-center border">
-            <div className="text-4xl font-bold text-primary mb-2">0</div>
+            <div className="text-4xl font-bold text-primary mb-2 tabular-nums">0</div>
             <div className="text-gray-600">Messages/sec</div>
           </div>
         </div>
@@ -65,28 +65,28 @@ export default function Home() {
         {/* Features Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl shadow-sm p-6 border">
-            <Radio className="h-8 w-8 text-primary mb-4" />
+            <Radio className="h-8 w-8 text-primary mb-4" aria-hidden="true" />
             <h3 className="text-xl font-semibold mb-2">Easy Setup</h3>
             <p className="text-gray-600">
               One command to start feeding from your Raspberry Pi running readsb.
             </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 border">
-            <Key className="h-8 w-8 text-primary mb-4" />
+            <Key className="h-8 w-8 text-primary mb-4" aria-hidden="true" />
             <h3 className="text-xl font-semibold mb-2">Free API Access</h3>
             <p className="text-gray-600">
               Active feeders get free API access with 1000 requests/minute.
             </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 border">
-            <BarChart3 className="h-8 w-8 text-primary mb-4" />
+            <BarChart3 className="h-8 w-8 text-primary mb-4" aria-hidden="true" />
             <h3 className="text-xl font-semibold mb-2">Statistics</h3>
             <p className="text-gray-600">
               Track your feeder performance with detailed analytics and charts.
             </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 border">
-            <Plane className="h-8 w-8 text-primary mb-4" />
+            <Plane className="h-8 w-8 text-primary mb-4" aria-hidden="true" />
             <h3 className="text-xl font-semibold mb-2">Live Map</h3>
             <p className="text-gray-600">
               View real-time aircraft positions on our tar1090-powered map.

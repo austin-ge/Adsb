@@ -1,4 +1,5 @@
 // Fetch aircraft data from readsb/tar1090 JSON endpoint
+import { cache } from "react";
 
 export interface Aircraft {
   hex: string; // ICAO hex address
@@ -30,7 +31,7 @@ export interface AircraftJson {
 const READSB_JSON_URL =
   process.env.READSB_JSON_URL || "http://localhost:8080/data/aircraft.json";
 
-export async function fetchAircraftData(): Promise<AircraftJson | null> {
+export const fetchAircraftData = cache(async (): Promise<AircraftJson | null> => {
   try {
     const response = await fetch(READSB_JSON_URL, {
       next: { revalidate: 1 }, // Revalidate every second
@@ -46,7 +47,7 @@ export async function fetchAircraftData(): Promise<AircraftJson | null> {
     console.error("Error fetching aircraft data:", error);
     return null;
   }
-}
+});
 
 export async function getAircraftCount(): Promise<number> {
   const data = await fetchAircraftData();

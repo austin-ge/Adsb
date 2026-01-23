@@ -58,8 +58,9 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - Tailwind CSS
 - shadcn/ui (Radix UI primitives)
 - react-map-gl + Mapbox GL JS
-- SWR (data fetching)
-- Lucide React (icons)
+- SWR (data fetching with dedup and revalidation)
+- Lucide React (icons, tree-shaken via `optimizePackageImports`)
+- next/dynamic (lazy loading for mapbox-gl, recharts)
 
 ### Backend
 - Next.js API Routes
@@ -121,7 +122,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | `/login` | User login |
 | `/register` | User registration |
 | `/map` | Live aircraft map (Mapbox) with altitude coloring, flight trails, emergency squawk highlighting, aircraft list sidebar (sortable, searchable, collapsible) |
-| `/leaderboard` | Top feeders ranked by contribution |
+| `/leaderboard` | Top feeders ranked by contribution (period/sort synced to URL params) |
 | `/docs/api` | API documentation |
 
 ### Dashboard Pages (authenticated)
@@ -169,10 +170,16 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 
 1. **Automatic Tier Upgrade:** First heartbeat from a feeder upgrades owner from FREE to FEEDER tier
 2. **Location Privacy:** Feeder coordinates only exposed to FEEDER+ tier API consumers
-3. **Rate Limiting:** In-memory rate limiter keyed by API key or IP, configurable per tier
+3. **Rate Limiting:** In-memory rate limiter keyed by API key or IP, configurable per tier. Better Auth endpoints also rate-limited (10 req/60s).
 4. **Install Scripts:** Personalized bash scripts generated per-feeder with embedded UUID
 5. **Aircraft Data Pipeline:** readsb aggregates feeds → tar1090 JSON → Next.js API → clients
 6. **Emergency Squawk Detection:** Aircraft with squawk 7500 (hijack), 7600 (radio failure), or 7700 (emergency) get color override, enlarged icons, pulsing rings, and info panel banners
+7. **Server-Side Deduplication:** `React.cache()` wraps `getServerSession` and `fetchAircraftData` to prevent redundant calls within a single request
+8. **Parallel Database Queries:** Stats and heartbeat routes use `Promise.all()` for independent queries
+9. **Bundle Optimization:** Heavy libraries (mapbox-gl, recharts) loaded via `next/dynamic` with SSR disabled; `optimizePackageImports` eliminates barrel file costs
+10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items
+11. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, and semantic form attributes
+12. **Shared Utilities:** `lib/fetcher.ts` (SWR fetcher with error handling) and `lib/format.ts` (number formatting) prevent code duplication
 
 ---
 
@@ -218,4 +225,4 @@ npm run worker           # Background stats worker
 
 ---
 
-*Last Updated: January 22, 2026*
+*Last Updated: January 23, 2026*

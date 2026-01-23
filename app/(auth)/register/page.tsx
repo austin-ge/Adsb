@@ -73,7 +73,7 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           {error && (
-            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md" aria-live="polite">
               {error}
             </div>
           )}
@@ -87,6 +87,7 @@ export default function RegisterPage() {
               onChange={(e) => setName(e.target.value)}
               required
               disabled={loading}
+              autoComplete="name"
             />
           </div>
           <div className="space-y-2">
@@ -99,6 +100,8 @@ export default function RegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              autoComplete="email"
+              spellCheck={false}
             />
           </div>
           <div className="space-y-2">
@@ -111,6 +114,7 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
+              autoComplete="new-password"
             />
           </div>
           <div className="space-y-2">
@@ -122,12 +126,13 @@ export default function RegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               disabled={loading}
+              autoComplete="new-password"
             />
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? "Creating account\u2026" : "Create account"}
           </Button>
           <p className="text-sm text-muted-foreground text-center">
             Already have an account?{" "}
