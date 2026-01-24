@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import MapGL, { Layer, Source, MapRef, MapMouseEvent, ViewStateChangeEvent } from "react-map-gl/mapbox";
+import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { fetcher } from "@/lib/fetcher";
 import {
@@ -14,7 +15,46 @@ import {
   getAltitudeColor,
   getEmergencyInfo,
 } from "./types";
+import {
+  AIRCRAFT_ICON_TYPES,
+  getIconImageName,
+  getIconTypeFromCategory,
+  renderAircraftIcon,
+} from "./aircraft-icons";
 import { AircraftSidebar } from "./aircraft-sidebar";
+import { PlaybackControls } from "./playback-controls";
+
+function buildAircraftGeojson(aircraft: Aircraft[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: aircraft.map((ac) => {
+      const emergency = getEmergencyInfo(ac.squawk);
+      const iconType = getIconTypeFromCategory(ac.category);
+      return {
+        type: "Feature" as const,
+        properties: {
+          hex: ac.hex,
+          flight: ac.flight,
+          registration: ac.registration,
+          aircraftType: ac.type,
+          altitude: ac.altitude,
+          ground_speed: ac.ground_speed,
+          track: ac.track ?? 0,
+          vertical_rate: ac.vertical_rate,
+          squawk: ac.squawk,
+          category: ac.category,
+          iconImage: getIconImageName(iconType),
+          color: emergency ? emergency.color : getAltitudeColor(ac.altitude),
+          isEmergency: emergency ? 1 : 0,
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [ac.lon, ac.lat],
+        },
+      };
+    }),
+  };
+}
 
 interface TrailPoint {
   lon: number;
@@ -24,6 +64,7 @@ interface TrailPoint {
 }
 
 const MAX_TRAIL_POINTS = 10000; // Keep full flight path
+const PLAYBACK_MAX_TRAIL_POINTS = 2000; // Reduced limit during playback to prevent memory issues
 const TRAIL_MAX_AGE_MS = 60 * 60 * 1000; // Clean up after 1 hour of no updates
 
 export default function MapPage() {
@@ -31,18 +72,30 @@ export default function MapPage() {
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mapCenter, setMapCenter] = useState({ lat: 39.8283, lng: -98.5795 });
+  const mapCenterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trailsRef = useRef<Map<string, TrailPoint[]>>(new Map());
   const aircraftRef = useRef<Aircraft[]>([]);
   const pulseAnimRef = useRef<number>(0);
 
-  // Use SWR for aircraft polling with 1-second refresh
+  // Playback mode state
+  const [isPlaybackMode, setIsPlaybackMode] = useState(false);
+  const [playbackAircraft, setPlaybackAircraft] = useState<Aircraft[]>([]);
+  const [_playbackTime, setPlaybackTime] = useState<number>(0);
+  const playbackTrailsRef = useRef<Map<string, TrailPoint[]>>(new Map());
+  const playbackAircraftRef = useRef<Aircraft[]>([]);
+  const playbackStateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trailVersionRef = useRef(0);
+
+  // Use SWR for aircraft polling with 1-second refresh (paused during playback)
   const { data: aircraftData, isLoading } = useSWR<AircraftResponse>(
-    "/api/map/aircraft",
+    isPlaybackMode ? null : "/api/map/aircraft",
     fetcher,
     { refreshInterval: 1000 }
   );
 
-  const aircraft = aircraftData?.aircraft ?? [];
+  // In playback mode, use playback aircraft data; otherwise use live data
+  const liveAircraft = aircraftData?.aircraft ?? [];
+  const aircraft = isPlaybackMode ? playbackAircraft : liveAircraft;
   const lastUpdate = aircraftData ? Date.now() : 0;
 
   // Keep aircraft ref in sync for stable callbacks
@@ -93,98 +146,7 @@ export default function MapPage() {
     }
   }, [aircraftData]);
 
-  // Pulse animation via Mapbox API (no React re-renders)
-  useEffect(() => {
-    const animate = () => {
-      const map = mapRef.current?.getMap();
-      if (map && map.getLayer("emergency-pulse-ring")) {
-        const phase = (performance.now() % 3000) / 3000;
-        const radius = 12 + phase * 20;
-        const opacity = 0.7 * (1 - phase);
-        map.setPaintProperty("emergency-pulse-ring", "circle-radius", radius);
-        map.setPaintProperty("emergency-pulse-ring", "circle-opacity", opacity);
-        map.setPaintProperty("emergency-pulse-ring", "circle-stroke-opacity", Math.min(opacity + 0.2, 0.9));
-      }
-      pulseAnimRef.current = requestAnimationFrame(animate);
-    };
-    pulseAnimRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(pulseAnimRef.current);
-  }, []);
-
-  // Track when the custom aircraft icon has been added to the map
-  const [iconReady, setIconReady] = useState(false);
-
-  // Poll for map readiness and add icon (bypasses onLoad timing issues)
-  useEffect(() => {
-    if (iconReady) return;
-    let cancelled = false;
-    const tryAddIcon = () => {
-      if (cancelled) return;
-      const map = mapRef.current?.getMap();
-      if (!map || !map.isStyleLoaded()) {
-        setTimeout(tryAddIcon, 50);
-        return;
-      }
-      if (map.hasImage("aircraft-icon")) {
-        setIconReady(true);
-        return;
-      }
-      const size = 48;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.moveTo(size / 2, 4);
-      ctx.lineTo(size - 8, size - 8);
-      ctx.lineTo(size / 2, size - 14);
-      ctx.lineTo(8, size - 8);
-      ctx.closePath();
-      ctx.fill();
-
-      map.addImage("aircraft-icon", ctx.getImageData(0, 0, size, size), { sdf: true });
-      setIconReady(true);
-    };
-    tryAddIcon();
-    return () => { cancelled = true; };
-  }, [iconReady]);
-
-  // Build GeoJSON from aircraft data
-  const geojson = useMemo(() => {
-    return {
-      type: "FeatureCollection" as const,
-      features: aircraft.map((ac) => {
-        const emergency = getEmergencyInfo(ac.squawk);
-        return {
-          type: "Feature" as const,
-          properties: {
-            hex: ac.hex,
-            flight: ac.flight,
-            registration: ac.registration,
-            aircraftType: ac.type,
-            altitude: ac.altitude,
-            ground_speed: ac.ground_speed,
-            track: ac.track ?? 0,
-            vertical_rate: ac.vertical_rate,
-            squawk: ac.squawk,
-            category: ac.category,
-            color: emergency ? emergency.color : getAltitudeColor(ac.altitude),
-            isSelected: ac.hex === selectedHex ? 1 : 0,
-            isEmergency: emergency ? 1 : 0,
-          },
-          geometry: {
-            type: "Point" as const,
-            coordinates: [ac.lon, ac.lat],
-          },
-        };
-      }),
-    };
-  }, [aircraft, selectedHex]);
-
-  // Build GeoJSON for emergency aircraft pulse rings
+  // Build GeoJSON for emergency aircraft pulse rings (moved above pulse animation)
   const emergencyGeojson = useMemo(() => {
     return {
       type: "FeatureCollection" as const,
@@ -203,13 +165,109 @@ export default function MapPage() {
     };
   }, [aircraft]);
 
-  const emergencyCount = useMemo(
-    () => aircraft.filter((ac) => getEmergencyInfo(ac.squawk) !== null).length,
-    [aircraft]
-  );
+  // Derive count directly from the already-computed emergencyGeojson (no separate filter pass)
+  const emergencyCount = emergencyGeojson.features.length;
 
-  // Build trail GeoJSON for selected aircraft
+  // Pulse animation via Mapbox API (no React re-renders) - only runs when emergencies exist
+  useEffect(() => {
+    if (emergencyCount === 0) return;
+
+    const animate = () => {
+      const map = mapRef.current?.getMap();
+      if (map && map.getLayer("emergency-pulse-ring")) {
+        const phase = (performance.now() % 3000) / 3000;
+        const radius = 12 + phase * 20;
+        const opacity = 0.7 * (1 - phase);
+        map.setPaintProperty("emergency-pulse-ring", "circle-radius", radius);
+        map.setPaintProperty("emergency-pulse-ring", "circle-opacity", opacity);
+        map.setPaintProperty("emergency-pulse-ring", "circle-stroke-opacity", Math.min(opacity + 0.2, 0.9));
+      }
+      pulseAnimRef.current = requestAnimationFrame(animate);
+    };
+    pulseAnimRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(pulseAnimRef.current);
+  }, [emergencyCount]);
+
+  // Track when all aircraft type icons have been added to the map
+  const [iconsReady, setIconsReady] = useState(false);
+
+  // Poll for map readiness and register all aircraft type icons
+  useEffect(() => {
+    if (iconsReady) return;
+    let cancelled = false;
+    const tryAddIcons = () => {
+      if (cancelled) return;
+      const map = mapRef.current?.getMap();
+      if (!map || !map.isStyleLoaded()) {
+        setTimeout(tryAddIcons, 50);
+        return;
+      }
+
+      // Check if all icons already loaded (e.g. after style reload)
+      const allLoaded = AIRCRAFT_ICON_TYPES.every((t) =>
+        map.hasImage(getIconImageName(t))
+      );
+      if (allLoaded) {
+        setIconsReady(true);
+        return;
+      }
+
+      // Render and register each aircraft type icon as an SDF image
+      const size = 48;
+      for (const iconType of AIRCRAFT_ICON_TYPES) {
+        const imageName = getIconImageName(iconType);
+        if (!map.hasImage(imageName)) {
+          const imageData = renderAircraftIcon(iconType, size);
+          map.addImage(imageName, imageData, { sdf: true });
+        }
+      }
+      setIconsReady(true);
+    };
+    tryAddIcons();
+    return () => { cancelled = true; };
+  }, [iconsReady]);
+
+  // Build GeoJSON from aircraft data (selectedHex excluded to avoid rebuild on click)
+  const geojson = useMemo(() => buildAircraftGeojson(aircraft), [aircraft]);
+
+  // Build trail GeoJSON for selected aircraft (live or playback mode)
   const trailGeojson = useMemo(() => {
+    // In playback mode, show trails for all aircraft
+    if (isPlaybackMode) {
+      const features: GeoJSON.Feature[] = [];
+      const trails = playbackTrailsRef.current;
+
+      for (const [hex, trail] of trails.entries()) {
+        if (trail.length < 2) continue;
+        // Only show trail for selected aircraft, or all if none selected
+        if (selectedHex && hex !== selectedHex) continue;
+
+        for (let i = 0; i < trail.length - 1; i++) {
+          const from = trail[i];
+          const to = trail[i + 1];
+          features.push({
+            type: "Feature",
+            properties: {
+              color: getAltitudeColor(to.altitude),
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [from.lon, from.lat],
+                [to.lon, to.lat],
+              ],
+            },
+          });
+        }
+      }
+
+      return {
+        type: "FeatureCollection" as const,
+        features,
+      };
+    }
+
+    // Live mode: show trail for selected aircraft only
     if (!selectedHex) {
       return {
         type: "FeatureCollection" as const,
@@ -250,8 +308,10 @@ export default function MapPage() {
       type: "FeatureCollection" as const,
       features,
     };
+    // trailVersionRef.current is used instead of playbackTime to avoid per-frame recomputation.
+    // It only increments when a new trail point is actually added (see handlePlaybackUpdate).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHex, aircraft]); // aircraft triggers recompute on each update
+  }, [selectedHex, aircraft, isPlaybackMode, trailVersionRef.current]);
 
   const selectedAircraft = useMemo(
     () => aircraft.find((a) => a.hex === selectedHex),
@@ -269,7 +329,13 @@ export default function MapPage() {
   }, []);
 
   const handleMoveEnd = useCallback((evt: ViewStateChangeEvent) => {
-    setMapCenter({ lat: evt.viewState.latitude, lng: evt.viewState.longitude });
+    // Debounce map center state updates to avoid re-renders on every pan
+    if (mapCenterDebounceRef.current) {
+      clearTimeout(mapCenterDebounceRef.current);
+    }
+    mapCenterDebounceRef.current = setTimeout(() => {
+      setMapCenter({ lat: evt.viewState.latitude, lng: evt.viewState.longitude });
+    }, 500);
   }, []);
 
   const handleSidebarSelect = useCallback((hex: string) => {
@@ -284,8 +350,117 @@ export default function MapPage() {
     }
   }, []);
 
+  // Playback callbacks - updates Mapbox source directly to avoid React re-renders at 60fps.
+  // React state is updated at a throttled rate (every 200ms) for UI displays only.
+  const handlePlaybackUpdate = useCallback(
+    (
+      positions: Array<{
+        hex: string;
+        lat: number;
+        lon: number;
+        altitude: number | null;
+        heading: number | null;
+        speed: number | null;
+        squawk: string | null;
+        flight: string | null;
+      }>,
+      timestamp: number
+    ) => {
+      // Convert playback positions to Aircraft format
+      const mapped: Aircraft[] = positions.map((p) => ({
+        hex: p.hex,
+        flight: p.flight,
+        registration: null,
+        type: null,
+        lat: p.lat,
+        lon: p.lon,
+        altitude: p.altitude,
+        ground_speed: p.speed,
+        track: p.heading,
+        vertical_rate: null,
+        squawk: p.squawk,
+        category: null,
+        seen: null,
+      }));
+
+      // Store in ref for immediate access (no React re-render)
+      playbackAircraftRef.current = mapped;
+
+      // Update the Mapbox source directly for smooth 60fps rendering
+      const map = mapRef.current?.getMap();
+      if (map) {
+        const aircraftSource = map.getSource("aircraft") as mapboxgl.GeoJSONSource | undefined;
+        if (aircraftSource) {
+          aircraftSource.setData(buildAircraftGeojson(mapped));
+        }
+      }
+
+      // Throttle React state updates to ~5fps (every 200ms) for UI elements
+      if (!playbackStateThrottleRef.current) {
+        playbackStateThrottleRef.current = setTimeout(() => {
+          playbackStateThrottleRef.current = null;
+          setPlaybackAircraft(playbackAircraftRef.current);
+          setPlaybackTime(timestamp);
+        }, 200);
+      }
+
+      // Build trails during playback
+      let trailAdded = false;
+      const trails = playbackTrailsRef.current;
+      for (const ac of mapped) {
+        const trail = trails.get(ac.hex) || [];
+        const lastPoint = trail[trail.length - 1];
+        if (
+          !lastPoint ||
+          lastPoint.lat !== ac.lat ||
+          lastPoint.lon !== ac.lon
+        ) {
+          trail.push({
+            lon: ac.lon,
+            lat: ac.lat,
+            altitude: ac.altitude,
+            timestamp,
+          });
+          if (trail.length > PLAYBACK_MAX_TRAIL_POINTS) {
+            trail.splice(0, trail.length - PLAYBACK_MAX_TRAIL_POINTS);
+          }
+          trails.set(ac.hex, trail);
+          trailAdded = true;
+        }
+      }
+
+      // Only increment trail version when new points are actually added
+      // This triggers trailGeojson recompute only when needed, not every frame
+      if (trailAdded) {
+        trailVersionRef.current += 1;
+      }
+    },
+    []
+  );
+
+  const handleToggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
+
+  const handleEnterPlayback = useCallback(() => {
+    setIsPlaybackMode(true);
+    setSelectedHex(null);
+    playbackTrailsRef.current = new Map();
+  }, []);
+
+  const handlePlaybackEnd = useCallback(() => {
+    setIsPlaybackMode(false);
+    setPlaybackAircraft([]);
+    setPlaybackTime(0);
+    playbackTrailsRef.current = new Map();
+    playbackAircraftRef.current = [];
+    trailVersionRef.current = 0;
+    if (playbackStateThrottleRef.current) {
+      clearTimeout(playbackStateThrottleRef.current);
+      playbackStateThrottleRef.current = null;
+    }
+  }, []);
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div className="relative h-screen w-screen overflow-hidden" role="application" aria-label="Live aircraft tracking map">
       <MapGL
         ref={mapRef}
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
@@ -296,7 +471,7 @@ export default function MapPage() {
         }}
         style={{ width: "100%", height: "100%" }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
-        interactiveLayerIds={["aircraft-markers"]}
+        interactiveLayerIds={["aircraft-markers", "aircraft-markers-selected"]}
         onClick={handleMapClick}
         onMoveEnd={handleMoveEnd}
         attributionControl={false}
@@ -346,41 +521,74 @@ export default function MapPage() {
         </Source>
 
         <Source id="aircraft" type="geojson" data={geojson}>
-          {/* Aircraft icons - only render after custom icon is loaded */}
-          {iconReady ? (
-            <Layer
-              id="aircraft-markers"
-              type="symbol"
-              layout={{
-                "icon-image": "aircraft-icon",
-                "icon-size": [
-                  "case",
-                  ["all", ["==", ["get", "isSelected"], 1], ["==", ["get", "isEmergency"], 1]],
-                  0.75,
-                  ["==", ["get", "isSelected"], 1],
-                  0.6,
-                  ["==", ["get", "isEmergency"], 1],
-                  0.55,
-                  0.4,
-                ],
-                "icon-rotate": ["get", "track"],
-                "icon-rotation-alignment": "map",
-                "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
-                "text-field": ["get", "flight"],
-                "text-size": 11,
-                "text-offset": [0, 1.8],
-                "text-optional": true,
-                "text-allow-overlap": false,
-              }}
-              paint={{
-                "icon-color": ["get", "color"],
-                "icon-opacity": 0.9,
-                "text-color": "#e2e8f0",
-                "text-halo-color": "#0f172a",
-                "text-halo-width": 1.5,
-              }}
-            />
+          {/* Aircraft icons - render type-specific icons after all are loaded */}
+          {iconsReady ? (
+            <>
+              {/* Base layer: all aircraft at normal size (emergency slightly larger) */}
+              <Layer
+                id="aircraft-markers"
+                type="symbol"
+                filter={selectedHex ? ["!=", ["get", "hex"], selectedHex] : ["has", "hex"]}
+                layout={{
+                  "icon-image": ["get", "iconImage"],
+                  "icon-size": [
+                    "case",
+                    ["==", ["get", "isEmergency"], 1],
+                    0.55,
+                    0.4,
+                  ],
+                  "icon-rotate": ["get", "track"],
+                  "icon-rotation-alignment": "map",
+                  "icon-allow-overlap": true,
+                  "icon-ignore-placement": true,
+                  "text-field": ["get", "flight"],
+                  "text-size": 11,
+                  "text-offset": [0, 1.8],
+                  "text-optional": true,
+                  "text-allow-overlap": false,
+                }}
+                paint={{
+                  "icon-color": ["get", "color"],
+                  "icon-opacity": 0.9,
+                  "text-color": "#e2e8f0",
+                  "text-halo-color": "#0f172a",
+                  "text-halo-width": 1.5,
+                }}
+              />
+              {/* Selected aircraft layer: enlarged icon for the selected aircraft */}
+              {selectedHex && (
+                <Layer
+                  id="aircraft-markers-selected"
+                  type="symbol"
+                  filter={["==", ["get", "hex"], selectedHex]}
+                  layout={{
+                    "icon-image": ["get", "iconImage"],
+                    "icon-size": [
+                      "case",
+                      ["==", ["get", "isEmergency"], 1],
+                      0.75,
+                      0.6,
+                    ],
+                    "icon-rotate": ["get", "track"],
+                    "icon-rotation-alignment": "map",
+                    "icon-allow-overlap": true,
+                    "icon-ignore-placement": true,
+                    "text-field": ["get", "flight"],
+                    "text-size": 12,
+                    "text-offset": [0, 2.0],
+                    "text-optional": true,
+                    "text-allow-overlap": true,
+                  }}
+                  paint={{
+                    "icon-color": ["get", "color"],
+                    "icon-opacity": 1.0,
+                    "text-color": "#ffffff",
+                    "text-halo-color": "#0f172a",
+                    "text-halo-width": 2,
+                  }}
+                />
+              )}
+            </>
           ) : (
             <Layer
               id="aircraft-markers"
@@ -404,11 +612,11 @@ export default function MapPage() {
         onSelectAircraft={handleSidebarSelect}
         mapCenter={mapCenter}
         isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen((prev) => !prev)}
+        onToggle={handleToggleSidebar}
       />
 
       {/* Stats overlay - top left */}
-      <div className={`absolute top-4 bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-200 font-mono tabular-nums transition-[left] duration-200 ${sidebarOpen ? "left-[21rem]" : "left-4"} hidden md:block`}>
+      <div className={`absolute top-4 bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-200 font-mono tabular-nums transition-[left] duration-200 ${sidebarOpen ? "left-[21rem]" : "left-4"} hidden md:block`} role="status" aria-live="polite" aria-atomic="true">
         <div className="flex items-center gap-3">
           <span>{aircraft.length} aircraft</span>
           {emergencyCount > 0 && (
@@ -420,11 +628,17 @@ export default function MapPage() {
             </>
           )}
           <span className="text-gray-500">|</span>
-          <span className="text-gray-400">
-            {lastUpdate
-              ? `Updated ${Math.round((Date.now() - lastUpdate) / 1000)}s ago`
-              : "Connecting\u2026"}
-          </span>
+          {isPlaybackMode ? (
+            <span className="text-amber-400 font-medium">
+              PLAYBACK
+            </span>
+          ) : (
+            <span className="text-gray-400">
+              {lastUpdate
+                ? `Updated ${Math.round((Date.now() - lastUpdate) / 1000)}s ago`
+                : "Connecting\u2026"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -432,14 +646,19 @@ export default function MapPage() {
       <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-200 font-mono tabular-nums md:hidden">
         <div className="flex items-center gap-3">
           <span>{aircraft.length} aircraft</span>
-          {emergencyCount > 0 && (
+          {isPlaybackMode ? (
+            <>
+              <span className="text-gray-500">|</span>
+              <span className="text-amber-400 font-medium">PLAYBACK</span>
+            </>
+          ) : emergencyCount > 0 ? (
             <>
               <span className="text-gray-500">|</span>
               <span className="text-red-400 font-bold animate-pulse">
                 {emergencyCount} emergency
               </span>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -579,8 +798,16 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Branding - bottom right */}
-      <div className="absolute bottom-8 right-4 text-xs text-gray-500">
+      {/* Playback controls */}
+      <PlaybackControls
+        onPlaybackUpdate={handlePlaybackUpdate}
+        onPlaybackEnd={handlePlaybackEnd}
+        isPlayback={isPlaybackMode}
+        onEnterPlayback={handleEnterPlayback}
+      />
+
+      {/* Branding - bottom right (shift up when playback controls visible) */}
+      <div className={`absolute right-4 text-xs text-gray-500 ${isPlaybackMode ? "bottom-24" : "bottom-8"}`}>
         HangarTrak Radar
       </div>
     </div>

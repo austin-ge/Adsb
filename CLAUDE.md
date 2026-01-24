@@ -3,7 +3,7 @@
 ## Project Overview
 HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 5 - Core features complete, integrating with HangarTrak
+**Status:** Phase 6 - Live map with playback, integrating with HangarTrak
 **Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
 
 ## Integration with HangarTrak
@@ -90,6 +90,9 @@ BETTER_AUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 NEXT_PUBLIC_MAP_URL="http://localhost:8080"
 READSB_JSON_URL="http://localhost:8080/data/aircraft.json"
+NEXT_PUBLIC_MAPBOX_TOKEN="..."  # Mapbox GL JS token
+INTERNAL_CRON_SECRET="..."  # Secret for history recorder auth
+HISTORY_RETENTION_HOURS=24  # How long to keep position data (default: 24)
 ```
 
 ### Common Commands
@@ -107,6 +110,12 @@ npx prisma studio
 # Docker (aggregator)
 docker build -t hangartrak-radar ./docker/aggregator
 docker run --name hangartrak-radar -p 30004:30004 -p 8080:80 hangartrak-radar
+
+# History recorder (saves aircraft positions every 10s)
+npx tsx scripts/history-recorder.ts
+
+# History cleanup (remove old position data)
+npx tsx scripts/history-cleanup.ts
 ```
 
 ### Project Structure
@@ -117,7 +126,9 @@ adsb/
 │   ├── (dashboard)/         # Dashboard pages
 │   ├── (public)/            # Public pages (leaderboard, docs)
 │   └── api/                 # API routes
-│       ├── v1/              # Public API (aircraft, stats, feeders)
+│       ├── v1/              # Public API (aircraft, stats, feeders, history)
+│       ├── internal/        # Internal APIs (history-snapshot)
+│       ├── map/             # Map APIs (aircraft, history)
 │       └── install/[uuid]/  # Personalized install scripts
 ├── components/              # React components
 │   └── ui/                  # shadcn/ui
@@ -135,7 +146,9 @@ adsb/
 │   └── aggregator/          # readsb + tar1090 Docker
 ├── scripts/
 │   ├── feeder-stats.sh      # Pi stats reporter template
-│   └── stats-worker.ts      # Background stats collection
+│   ├── stats-worker.ts      # Background stats collection
+│   ├── history-recorder.ts  # Saves aircraft positions every 10s
+│   └── history-cleanup.ts   # Removes old position data (retention)
 ├── docs/
 │   └── PLAN.md              # Original implementation plan
 ├── Dockerfile               # Next.js production build
@@ -146,6 +159,7 @@ adsb/
 - **User** - Account with hashed API key (`apiKeyHash`), display prefix (`apiKeyPrefix`), and tier
 - **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location)
 - **FeederStats** - Historical statistics (hourly snapshots)
+- **AircraftPosition** - Historical aircraft position snapshots (hex, lat, lon, altitude, heading, speed, squawk, flight, timestamp)
 - **Session/Account/Verification** - Better Auth tables
 
 ### API Tiers
@@ -159,10 +173,13 @@ adsb/
 - API key via `x-api-key` header (hashed with SHA-256 for storage, looked up by hash)
 - Rate limiting in `lib/api/middleware.ts` (in-memory, per API key or IP)
 - Heartbeat auth via `Authorization: Bearer <heartbeatToken>` (timing-safe comparison)
+- Internal API auth via `INTERNAL_CRON_SECRET` header (timing-safe comparison)
 - Aircraft data from tar1090 JSON endpoint
 - Feeders connect via readsb `--net-connector`
 - Feeders self-report stats via heartbeat API
 - Input validation: feeder names restricted to `[a-zA-Z0-9 _\-\.]`, max 64 chars
+- Historical playback: positions stored every ~10s, interpolated client-side at 60fps via requestAnimationFrame
+- Aircraft type icons: canvas-rendered SDF icons mapped from ICAO emitter category codes via Mapbox expressions
 
 ## Implementation Status
 
@@ -184,11 +201,12 @@ adsb/
 - [x] Flight trails/history for selected aircraft
 - [x] Emergency squawk highlighting (7500/7600/7700)
 - [ ] MLAT indicator
-- [ ] Aircraft type icons (jet, prop, helicopter)
+- [x] Aircraft type icons (jet, prop, helicopter)
 - [ ] Range rings and distance/bearing
 - [x] Aircraft list sidebar (sortable table, click to select)
 - [ ] URL sharing, dark/light mode, metric/imperial toggles
-- [ ] Historical playback and receiver coverage visualization
+- [x] Historical playback (timeline slider, play/pause, speed control, interpolation)
+- [ ] Receiver coverage visualization
 
 ### Remaining
 - [ ] Historical charts (feeder stats over time)
@@ -209,6 +227,7 @@ When integrating with HangarTrak, update these in the HangarTrak codebase:
 GET /api/v1/aircraft              - All current aircraft
 GET /api/v1/aircraft/:hex         - Single aircraft by ICAO hex
 GET /api/v1/stats                 - Network statistics
+GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 ```
 
 ## Documentation Maintenance

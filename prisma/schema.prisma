@@ -129,6 +129,23 @@ model FeederStats {
   @@index([timestamp])
 }
 
+// Historical aircraft positions (snapshots every ~10 seconds)
+model AircraftPosition {
+  id        String   @id @default(cuid())
+  hex       String   // ICAO hex address
+  lat       Float
+  lon       Float
+  altitude  Int?     // Barometric altitude in feet
+  heading   Float?   // Track angle in degrees
+  speed     Float?   // Ground speed in knots
+  squawk    String?  // Squawk code
+  flight    String?  // Callsign
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([hex, timestamp])
+}
+
 // Future: Stripe subscription for Pro tier
 model Subscription {
   id               String    @id @default(cuid())

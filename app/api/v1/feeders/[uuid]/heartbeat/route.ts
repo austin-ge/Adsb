@@ -93,7 +93,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // Calculate stats from payload with bounds checking
   const aircraftCount = Math.max(0, Math.min(10000, payload.aircraft_count ?? payload.aircraft?.length ?? 0));
-  const aircraftWithPos = Math.max(0, Math.min(10000, payload.aircraft_with_pos ?? 0));
+  const _aircraftWithPos = Math.max(0, Math.min(10000, payload.aircraft_with_pos ?? 0));
   const messages = Math.max(0, Math.min(1000000, payload.messages ?? 0));
   const positions = Math.max(0, Math.min(1000000, payload.positions ?? 0));
 

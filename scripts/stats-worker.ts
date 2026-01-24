@@ -41,7 +41,7 @@ interface ReadsbStats {
 }
 
 // Track previous stats for delta calculation
-let previousStats: { messages: number; positions: number } | null = null;
+let _previousStats: { messages: number; positions: number } | null = null;
 
 /**
  * Fetch stats from readsb
@@ -119,7 +119,7 @@ async function updateFeederStats() {
     }
 
     // Store for delta calculation
-    previousStats = { messages: totalMessages, positions: totalPositions };
+    _previousStats = { messages: totalMessages, positions: totalPositions };
   } else {
     console.log("  No data received in last minute");
   }

@@ -33,11 +33,14 @@ HangarTrak Radar Aggregator (readsb)
     ↓ JSON
 Next.js API Layer
     ├── Dashboard UI
-    ├── Public API v1
-    ├── Live Map (Mapbox)
+    ├── Public API v1 (aircraft, stats, history)
+    ├── Live Map (Mapbox) with playback
     └── HangarTrak Integration
     ↓
-PostgreSQL Database
+PostgreSQL Database (users, feeders, stats, positions)
+    ↑
+History Recorder (scripts/history-recorder.ts, every 10s)
+    ↑ reads readsb JSON via internal snapshot API
 ```
 
 ### Feeder Self-Reporting
@@ -101,6 +104,14 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - messages, positions, aircraftCount
 - timestamp (indexed)
 
+**AircraftPosition**
+- id, hex (ICAO hex address)
+- lat, lon (position)
+- altitude (barometric, feet), heading (degrees), speed (knots)
+- squawk, flight (callsign)
+- timestamp (indexed; composite indexes on hex+timestamp and timestamp+hex)
+- Populated every ~10s by history recorder; cleaned up by retention script (default 24h)
+
 **Session, Account, Verification** - Better Auth managed tables
 
 ### API Tiers
@@ -121,7 +132,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | `/` | Landing page with feature showcase |
 | `/login` | User login |
 | `/register` | User registration |
-| `/map` | Live aircraft map (Mapbox) with altitude coloring, flight trails, emergency squawk highlighting, aircraft list sidebar (sortable, searchable, collapsible) |
+| `/map` | Live aircraft map (Mapbox) with altitude coloring, canvas-rendered SDF aircraft type icons (jet/turboprop/helicopter/light/generic from ICAO emitter category), flight trails, emergency squawk highlighting, aircraft list sidebar (sortable, searchable, collapsible), historical playback (timeline slider, play/pause, 1x/2x/5x/10x speed, smooth interpolation with heading-aware rotation) |
 | `/leaderboard` | Top feeders ranked by contribution (period/sort synced to URL params) |
 | `/docs/api` | API documentation |
 
@@ -145,11 +156,13 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | GET | `/aircraft` | API Key | All current aircraft (filterable) |
 | GET | `/aircraft/[hex]` | API Key | Single aircraft by ICAO hex |
 | GET | `/stats` | API Key | Network statistics |
+| GET | `/history` | API Key | Historical positions (params: from, to, hex) |
 | GET | `/feeders` | API Key | Feeder list (location restricted by tier) |
 | POST | `/feeders/[uuid]/heartbeat` | Bearer token | Feeder stats reporting (rate limited: 10/min) |
 | GET | `/feeders/[uuid]/heartbeat` | None | Feeder status check |
 
 **Aircraft Filters:** bounds (N/S/E/W), altitude range, callsign
+**History Params:** from/to (ISO 8601, max 60min range), hex (optional ICAO filter)
 
 ### Internal APIs
 
@@ -163,6 +176,8 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | GET | `/api/leaderboard` | Leaderboard data |
 | GET | `/api/stats` | Network stats |
 | GET | `/api/map/aircraft` | Aircraft for map visualization |
+| GET | `/api/map/history` | Historical positions for map playback (params: from, to) |
+| POST | `/api/internal/history-snapshot` | Record aircraft positions (auth: INTERNAL_CRON_SECRET, POST-only for CSRF prevention) |
 
 ---
 
@@ -177,9 +192,13 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 7. **Server-Side Deduplication:** `React.cache()` wraps `getServerSession` and `fetchAircraftData` to prevent redundant calls within a single request
 8. **Parallel Database Queries:** Stats and heartbeat routes use `Promise.all()` for independent queries
 9. **Bundle Optimization:** Heavy libraries (mapbox-gl, recharts) loaded via `next/dynamic` with SSR disabled; `optimizePackageImports` eliminates barrel file costs
-10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items, polling-based custom icon loading (avoids `onLoad` timing issues with dynamic imports)
-11. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, and semantic form attributes
+10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items, polling-based custom icon loading (avoids `onLoad` timing issues with dynamic imports), canvas-rendered SDF aircraft type icons (jet/turboprop/helicopter/light/generic) with per-feature icon selection via Mapbox expressions
+11. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, semantic form attributes, map container `role="application"`, stats `aria-live="polite"`, playback controls `role="group"` with `aria-valuetext`, and focus-visible styles on interactive elements
 12. **Shared Utilities:** `lib/fetcher.ts` (SWR fetcher with error handling) and `lib/format.ts` (number formatting) prevent code duplication
+13. **Historical Playback:** Position snapshots stored every ~10s by external recorder script; map UI loads time ranges and interpolates aircraft positions between snapshots using requestAnimationFrame; heading interpolation uses shortest-arc (360/0 boundary); SWR polling paused during playback; throttled setCurrentTime to ~12-15fps; direct Mapbox source updates bypass React state at 60fps
+14. **Internal API Security:** `/api/internal/history-snapshot` requires `INTERNAL_CRON_SECRET` header (timing-safe comparison); POST-only (GET removed for CSRF prevention); readsb data validated before DB insert (hex format, lat/lon ranges)
+15. **Playback Performance:** Direct Mapbox `getSource().setData()` calls during playback avoid React re-renders; O(n) Set-based interpolation lookup replaces O(n^2) array scan; pulse animations gated on emergency count; trail points capped at 2000 during playback; version counter ref replaces playbackTime in memo deps
+16. **Data Validation:** History queries enforce `from < to`, max 60-minute range, valid hex codes, and `take: 100000` safety limit; feeder heartbeat validates hex format and coordinate ranges before insert
 
 ---
 
@@ -196,6 +215,8 @@ NEXT_PUBLIC_MAPBOX_TOKEN=<mapbox token>
 
 # Optional
 BEAST_PORT=30004
+INTERNAL_CRON_SECRET=<secret for history recorder>
+HISTORY_RETENTION_HOURS=24
 ```
 
 ---
@@ -210,6 +231,8 @@ npm run db:push          # Sync Prisma schema to DB
 npm run db:migrate       # Create migration
 npm run db:studio        # Prisma Studio GUI
 npm run worker           # Background stats worker
+npx tsx scripts/history-recorder.ts  # Aircraft position recorder (10s interval)
+npx tsx scripts/history-cleanup.ts   # Clean old position data
 ```
 
 ---
@@ -225,4 +248,4 @@ npm run worker           # Background stats worker
 
 ---
 
-*Last Updated: January 23, 2026*
+*Last Updated: January 24, 2026*
