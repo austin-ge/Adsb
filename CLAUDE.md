@@ -80,6 +80,31 @@ All authentication code should follow the **Better Auth Best Practices** skill (
 
 UI components should comply with the **Web Interface Guidelines** skill (`/web-design-guidelines`). Run this skill against UI files to check for accessibility, semantic HTML, interaction patterns, and design best practices.
 
+## Development Workflow
+
+All work happens on `develop` branch (or feature branches off it). Use the project's custom agents (`.claude/agents/`) to keep context lean and work parallel.
+
+### Pipeline
+1. **Branch** — Create feature branch from `develop` (or work directly on `develop`)
+2. **Implement** — Use domain agents: `map-developer`, `api-developer`, `ui-designer`, `auth-developer`, `db-migrator`
+3. **Review** — Run `code-reviewer` against new code (checks perf, a11y, security)
+4. **Fix** — Address review findings with the appropriate domain agent
+5. **Validate** — Run `test-runner` (build/lint/types must all pass)
+6. **Docs** — Run `docs-updater` to update CHANGELOG.md, SPEC.md, CLAUDE.md
+7. **Commit** — Commit to `develop`, PR to `main` when ready for production
+
+### Supporting Agents
+- `docker-ops` — Build/run/debug the readsb aggregator container
+- `api-tester` — curl-based endpoint verification
+- `dependency-auditor` — Check for outdated/vulnerable packages
+- `git-workflow` — Branch management and PR preparation
+
+### Key Rules
+- Domain agents write code but do NOT update docs (docs-updater does that last)
+- Run agents sequentially when they edit the same files, parallel when they don't
+- Always validate build after parallel agent edits (they can conflict)
+- Coder agents have best-practice skills baked in to write clean code from the start
+
 ## Quick Reference
 
 ### Essential Environment Variables
