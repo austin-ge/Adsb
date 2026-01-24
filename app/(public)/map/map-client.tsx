@@ -521,77 +521,73 @@ export default function MapPage() {
         </Source>
 
         <Source id="aircraft" type="geojson" data={geojson}>
-          {/* Aircraft icons - render type-specific icons after all are loaded */}
-          {iconsReady ? (
-            <>
-              {/* Base layer: all aircraft at normal size (emergency slightly larger) */}
-              <Layer
-                id="aircraft-markers"
-                type="symbol"
-                filter={selectedHex ? ["!=", ["get", "hex"], selectedHex] : ["has", "hex"]}
-                layout={{
-                  "icon-image": ["get", "iconImage"],
-                  "icon-size": [
-                    "case",
-                    ["==", ["get", "isEmergency"], 1],
-                    0.55,
-                    0.4,
-                  ],
-                  "icon-rotate": ["get", "track"],
-                  "icon-rotation-alignment": "map",
-                  "icon-allow-overlap": true,
-                  "icon-ignore-placement": true,
-                  "text-field": ["get", "flight"],
-                  "text-size": 11,
-                  "text-offset": [0, 1.8],
-                  "text-optional": true,
-                  "text-allow-overlap": false,
-                }}
-                paint={{
-                  "icon-color": ["get", "color"],
-                  "icon-opacity": 0.9,
-                  "text-color": "#e2e8f0",
-                  "text-halo-color": "#0f172a",
-                  "text-halo-width": 1.5,
-                }}
-              />
-              {/* Selected aircraft layer: enlarged icon for the selected aircraft */}
-              {selectedHex && (
-                <Layer
-                  id="aircraft-markers-selected"
-                  type="symbol"
-                  filter={["==", ["get", "hex"], selectedHex]}
-                  layout={{
-                    "icon-image": ["get", "iconImage"],
-                    "icon-size": [
-                      "case",
-                      ["==", ["get", "isEmergency"], 1],
-                      0.75,
-                      0.6,
-                    ],
-                    "icon-rotate": ["get", "track"],
-                    "icon-rotation-alignment": "map",
-                    "icon-allow-overlap": true,
-                    "icon-ignore-placement": true,
-                    "text-field": ["get", "flight"],
-                    "text-size": 12,
-                    "text-offset": [0, 2.0],
-                    "text-optional": true,
-                    "text-allow-overlap": true,
-                  }}
-                  paint={{
-                    "icon-color": ["get", "color"],
-                    "icon-opacity": 1.0,
-                    "text-color": "#ffffff",
-                    "text-halo-color": "#0f172a",
-                    "text-halo-width": 2,
-                  }}
-                />
-              )}
-            </>
-          ) : (
+          {iconsReady && (
             <Layer
               id="aircraft-markers"
+              type="symbol"
+              filter={selectedHex ? ["!=", ["get", "hex"], selectedHex] : ["has", "hex"]}
+              layout={{
+                "icon-image": ["get", "iconImage"],
+                "icon-size": [
+                  "case",
+                  ["==", ["get", "isEmergency"], 1],
+                  0.55,
+                  0.4,
+                ],
+                "icon-rotate": ["get", "track"],
+                "icon-rotation-alignment": "map",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "text-field": ["get", "flight"],
+                "text-size": 11,
+                "text-offset": [0, 1.8],
+                "text-optional": true,
+                "text-allow-overlap": false,
+              }}
+              paint={{
+                "icon-color": ["get", "color"],
+                "icon-opacity": 0.9,
+                "text-color": "#e2e8f0",
+                "text-halo-color": "#0f172a",
+                "text-halo-width": 1.5,
+              }}
+            />
+          )}
+          {iconsReady && selectedHex && (
+            <Layer
+              id="aircraft-markers-selected"
+              type="symbol"
+              filter={["==", ["get", "hex"], selectedHex]}
+              layout={{
+                "icon-image": ["get", "iconImage"],
+                "icon-size": [
+                  "case",
+                  ["==", ["get", "isEmergency"], 1],
+                  0.75,
+                  0.6,
+                ],
+                "icon-rotate": ["get", "track"],
+                "icon-rotation-alignment": "map",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "text-field": ["get", "flight"],
+                "text-size": 12,
+                "text-offset": [0, 2.0],
+                "text-optional": true,
+                "text-allow-overlap": true,
+              }}
+              paint={{
+                "icon-color": ["get", "color"],
+                "icon-opacity": 1.0,
+                "text-color": "#ffffff",
+                "text-halo-color": "#0f172a",
+                "text-halo-width": 2,
+              }}
+            />
+          )}
+          {!iconsReady && (
+            <Layer
+              id="aircraft-markers-fallback"
               type="symbol"
               layout={{
                 "icon-image": "airport",
