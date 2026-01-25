@@ -181,6 +181,10 @@ export default function MapPage() {
     { refreshInterval: 300000 } // 5 minutes
   );
 
+  // Memoize coverage props to prevent unnecessary re-renders of CoverageHeatmap
+  const coveragePoints = useMemo(() => coverageData?.points ?? [], [coverageData?.points]);
+  const coverageMaxCount = coverageData?.maxCount ?? 0;
+
   // In playback mode, use playback aircraft data; otherwise use live data
   const liveAircraft = aircraftData?.aircraft ?? [];
   const aircraft = isPlaybackMode ? playbackAircraft : liveAircraft;
@@ -723,8 +727,8 @@ export default function MapPage() {
       >
         {/* Coverage heatmap layer - rendered below everything else */}
         <CoverageHeatmap
-          points={coverageData?.points ?? []}
-          maxCount={coverageData?.maxCount ?? 0}
+          points={coveragePoints}
+          maxCount={coverageMaxCount}
           visible={coverageHeatmapEnabled}
         />
 

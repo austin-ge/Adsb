@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 /**
  * Unit systems supported by the map
@@ -187,39 +187,47 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     [units]
   );
 
-  // Unit labels
-  const altitudeUnit = units === "imperial" ? "feet" : "meters";
-  const altitudeUnitShort = units === "imperial" ? "ft" : "m";
-  const speedUnit = units === "imperial" ? "knots" : "km/h";
-  const speedUnitShort = units === "imperial" ? "kts" : "km/h";
-  const distanceUnit = units === "imperial" ? "nautical miles" : "kilometers";
-  const distanceUnitShort = units === "imperial" ? "nm" : "km";
-  const verticalRateUnit = units === "imperial" ? "feet per minute" : "meters per second";
-  const verticalRateUnitShort = units === "imperial" ? "fpm" : "m/s";
-
-  // Provide value object
-  const value: UnitsContextValue = {
-    units,
-    setUnits,
-    toggleUnits,
-    convertAltitude,
-    convertSpeed,
-    convertDistance,
-    convertVerticalRate,
-    formatAltitude,
-    formatSpeed,
-    formatDistance,
-    formatDistanceShort,
-    formatVerticalRate,
-    altitudeUnit,
-    altitudeUnitShort,
-    speedUnit,
-    speedUnitShort,
-    distanceUnit,
-    distanceUnitShort,
-    verticalRateUnit,
-    verticalRateUnitShort,
-  };
+  // Memoize the context value to prevent unnecessary re-renders in consumers
+  // All callbacks are already memoized with useCallback, so we only depend on `units`
+  const value: UnitsContextValue = useMemo(
+    () => ({
+      units,
+      setUnits,
+      toggleUnits,
+      convertAltitude,
+      convertSpeed,
+      convertDistance,
+      convertVerticalRate,
+      formatAltitude,
+      formatSpeed,
+      formatDistance,
+      formatDistanceShort,
+      formatVerticalRate,
+      // Unit labels - derived directly from units
+      altitudeUnit: units === "imperial" ? "feet" : "meters",
+      altitudeUnitShort: units === "imperial" ? "ft" : "m",
+      speedUnit: units === "imperial" ? "knots" : "km/h",
+      speedUnitShort: units === "imperial" ? "kts" : "km/h",
+      distanceUnit: units === "imperial" ? "nautical miles" : "kilometers",
+      distanceUnitShort: units === "imperial" ? "nm" : "km",
+      verticalRateUnit: units === "imperial" ? "feet per minute" : "meters per second",
+      verticalRateUnitShort: units === "imperial" ? "fpm" : "m/s",
+    }),
+    [
+      units,
+      setUnits,
+      toggleUnits,
+      convertAltitude,
+      convertSpeed,
+      convertDistance,
+      convertVerticalRate,
+      formatAltitude,
+      formatSpeed,
+      formatDistance,
+      formatDistanceShort,
+      formatVerticalRate,
+    ]
+  );
 
   return <UnitsContext.Provider value={value}>{children}</UnitsContext.Provider>;
 }
