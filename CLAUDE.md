@@ -86,13 +86,42 @@ All work happens on `develop` branch (or feature branches off it).
 
 ### Pipeline
 1. **Branch** — Create feature branch from `develop` (or work directly on `develop`)
-2. **Implement** — Build features following the coding standards below
+2. **Implement** — Use custom agents for domain-specific work
 3. **Validate** — Run `npm run build && npm run lint` (must pass)
 4. **Docs** — Update CHANGELOG.md with changes
 5. **Commit** — Commit to `develop`, PR to `main` when ready for production
 
+### Custom Agents (`.claude/agents/`)
+
+Specialized instruction sets for different domains. Invoke by asking Claude to use them:
+
+**Domain Agents:**
+- `api-developer` — API routes, database queries, backend logic
+- `map-developer` — Mapbox GL, aircraft rendering, map features
+- `ui-designer` — Pages, layouts, components, Tailwind styling
+- `auth-developer` — Better Auth, sessions, permissions
+- `db-migrator` — Prisma schema changes, migrations
+
+**Supporting Agents:**
+- `code-reviewer` — Review code for perf, a11y, security issues
+- `test-runner` — Run build/lint/type checks
+- `docs-updater` — Update CHANGELOG, SPEC, CLAUDE.md
+- `docker-ops` — Aggregator container management
+- `api-tester` — curl-based endpoint verification
+- `dependency-auditor` — Check for outdated/vulnerable packages
+- `git-workflow` — Branch management and PR preparation
+
+**How to invoke:**
+```
+"Use the api-developer agent to implement the search endpoint"
+"Have the code-reviewer agent check my changes"
+"Use the map-developer agent to add range rings"
+```
+
+Claude reads the agent's instructions from `.claude/agents/[name].md` and follows that specialized context.
+
 ### Background Tasks
-For long-running or parallelizable work, Claude can spawn background agents using the Task tool with `general-purpose` subagent type. These run independently and report back when complete.
+For long-running work, Claude can spawn background workers using the Task tool with `general-purpose` subagent type. These run independently and report back when complete. Note: Background tasks don't have access to custom agents.
 
 ## Quick Reference
 
