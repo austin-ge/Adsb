@@ -9,8 +9,11 @@ import {
   getDistanceNm,
   getEmergencyInfo,
 } from "./types";
+import { FlightSearch } from "./flight-search";
+import { Radio, Search } from "lucide-react";
 
 type SortField = "callsign" | "altitude" | "speed" | "squawk" | "distance";
+type SidebarTab = "live" | "search";
 
 interface AircraftSidebarProps {
   aircraft: Aircraft[];
@@ -19,6 +22,7 @@ interface AircraftSidebarProps {
   mapCenter: { lat: number; lng: number };
   isOpen: boolean;
   onToggle: () => void;
+  onSelectFlight?: (flightId: string) => void;
 }
 
 export function AircraftSidebar({
@@ -28,9 +32,11 @@ export function AircraftSidebar({
   mapCenter,
   isOpen,
   onToggle,
+  onSelectFlight,
 }: AircraftSidebarProps) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("distance");
+  const [activeTab, setActiveTab] = useState<SidebarTab>("live");
 
   const filteredAndSorted = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -90,11 +96,35 @@ export function AircraftSidebar({
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Header */}
+        {/* Header with tabs */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
-          <span className="text-sm font-semibold text-gray-100">
-            Aircraft ({aircraft.length})
-          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setActiveTab("live")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                activeTab === "live"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+              }`}
+              aria-pressed={activeTab === "live"}
+            >
+              <Radio className="w-3 h-3" />
+              Live
+              <span className="text-[10px] opacity-80">({aircraft.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("search")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                activeTab === "search"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-300 bg-gray-800 hover:text-white hover:bg-gray-700"
+              }`}
+              aria-pressed={activeTab === "search"}
+            >
+              <Search className="w-3 h-3" />
+              Search
+            </button>
+          </div>
           <button
             onClick={onToggle}
             className="text-gray-400 hover:text-white p-1"
@@ -113,92 +143,103 @@ export function AircraftSidebar({
           </button>
         </div>
 
-        {/* Search */}
-        <div className="px-3 py-2 border-b border-gray-700">
-          <input
-            type="text"
-            placeholder="Search callsign, reg, hex\u2026"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
-            aria-label="Search aircraft"
-          />
-        </div>
+        {/* Live tab: Search */}
+        {activeTab === "live" && (
+          <div className="px-3 py-2 border-b border-gray-700">
+            <input
+              type="text"
+              placeholder="Search callsign, reg, hex\u2026"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
+              aria-label="Search aircraft"
+            />
+          </div>
+        )}
 
-        {/* Sort */}
-        <div className="px-3 py-1.5 border-b border-gray-700 flex items-center gap-2">
-          <span className="text-xs text-gray-500">Sort:</span>
-          <select
-            value={sortField}
-            onChange={(e) => setSortField(e.target.value as SortField)}
-            className="bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
-            aria-label="Sort aircraft"
-          >
-            <option value="distance">Distance</option>
-            <option value="callsign">Callsign</option>
-            <option value="altitude">Altitude</option>
-            <option value="speed">Speed</option>
-            <option value="squawk">Squawk</option>
-          </select>
-        </div>
+        {/* Live tab: Sort */}
+        {activeTab === "live" && (
+          <div className="px-3 py-1.5 border-b border-gray-700 flex items-center gap-2">
+            <span className="text-xs text-gray-500">Sort:</span>
+            <select
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus:border-gray-400"
+              aria-label="Sort aircraft"
+            >
+              <option value="distance">Distance</option>
+              <option value="callsign">Callsign</option>
+              <option value="altitude">Altitude</option>
+              <option value="speed">Speed</option>
+              <option value="squawk">Squawk</option>
+            </select>
+          </div>
+        )}
 
-        {/* Aircraft list */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
-          {filteredAndSorted.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-gray-500 text-center">
-              {search ? "No aircraft match your search" : "No aircraft"}
-            </div>
-          ) : (
-            filteredAndSorted.map((ac) => {
-              const emergency = getEmergencyInfo(ac.squawk);
-              const isSelected = ac.hex === selectedHex;
+        {/* Live tab: Aircraft list */}
+        {activeTab === "live" && (
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            {filteredAndSorted.length === 0 ? (
+              <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                {search ? "No aircraft match your search" : "No aircraft"}
+              </div>
+            ) : (
+              filteredAndSorted.map((ac) => {
+                const emergency = getEmergencyInfo(ac.squawk);
+                const isSelected = ac.hex === selectedHex;
 
-              return (
-                <button
-                  key={ac.hex}
-                  onClick={() => onSelectAircraft(ac.hex)}
-                  className={`w-full text-left px-3 py-2 border-b border-gray-800 transition-colors ${
-                    isSelected
-                      ? "bg-blue-900/40 border-l-2 border-l-blue-500"
-                      : "hover:bg-gray-800/60"
-                  }`}
-                  style={{ contentVisibility: 'auto', containIntrinsicSize: '0 52px' }}
-                >
-                  <div className="flex items-center gap-2">
-                    {/* Altitude color dot */}
-                    <div
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: getAltitudeColor(ac.altitude) }}
-                    />
-                    {/* Callsign */}
-                    <span className="text-sm font-medium text-gray-100 truncate">
-                      {ac.flight?.trim() || ac.hex.toUpperCase()}
-                    </span>
-                    {/* Emergency badge */}
-                    {emergency && (
-                      <span
-                        className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 animate-pulse"
-                        style={{
-                          backgroundColor: emergency.color,
-                          color: "white",
-                        }}
-                      >
-                        {emergency.label}
+                return (
+                  <button
+                    key={ac.hex}
+                    onClick={() => onSelectAircraft(ac.hex)}
+                    className={`w-full text-left px-3 py-2 border-b border-gray-800 transition-colors ${
+                      isSelected
+                        ? "bg-blue-900/40 border-l-2 border-l-blue-500"
+                        : "hover:bg-gray-800/60"
+                    }`}
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: '0 52px' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {/* Altitude color dot */}
+                      <div
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: getAltitudeColor(ac.altitude) }}
+                      />
+                      {/* Callsign */}
+                      <span className="text-sm font-medium text-gray-100 truncate">
+                        {ac.flight?.trim() || ac.hex.toUpperCase()}
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                    <span>{formatAltitude(ac.altitude)}</span>
-                    <span>{formatSpeed(ac.ground_speed)}</span>
-                    <span className="ml-auto text-gray-500">
-                      {Math.round(ac.distance)} nm
-                    </span>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
+                      {/* Emergency badge */}
+                      {emergency && (
+                        <span
+                          className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 animate-pulse"
+                          style={{
+                            backgroundColor: emergency.color,
+                            color: "white",
+                          }}
+                        >
+                          {emergency.label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
+                      <span>{formatAltitude(ac.altitude)}</span>
+                      <span>{formatSpeed(ac.ground_speed)}</span>
+                      <span className="ml-auto text-gray-500">
+                        {Math.round(ac.distance)} nm
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Search tab: Flight search */}
+        {activeTab === "search" && onSelectFlight && (
+          <FlightSearch onSelectFlight={onSelectFlight} />
+        )}
       </div>
 
       {/* Toggle button when collapsed */}

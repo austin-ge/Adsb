@@ -144,6 +144,35 @@ model AircraftPosition {
 
   @@index([timestamp])
   @@index([hex, timestamp])
+  @@index([flight, timestamp]) // Enable callsign-based queries
+}
+
+// Archived flight records with embedded position data
+model Flight {
+  id            String   @id @default(cuid())
+  hex           String   // ICAO hex address
+  callsign      String?  // Callsign at time of flight
+  startTime     DateTime
+  endTime       DateTime
+  maxAltitude   Int?     // Max altitude in feet
+  totalDistance Float?   // Distance in nautical miles
+  durationSecs  Int      // Duration in seconds
+  positionCount Int      // Number of archived positions
+  startLat      Float
+  startLon      Float
+  endLat        Float
+  endLon        Float
+
+  // Archived positions (JSON array, downsampled to ~30s intervals)
+  // Format: [{lat, lon, alt, hdg, spd, ts}, ...]
+  positions     Json
+
+  segmentedAt   DateTime @default(now())
+
+  @@index([hex])
+  @@index([callsign])
+  @@index([startTime])
+  @@index([hex, startTime])
 }
 
 // Future: Stripe subscription for Pro tier

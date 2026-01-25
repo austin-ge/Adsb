@@ -99,6 +99,20 @@ All work happens on `develop` branch (or feature branches off it). Use the proje
 - `dependency-auditor` — Check for outdated/vulnerable packages
 - `git-workflow` — Branch management and PR preparation
 
+### Invoking Agents
+Agents are invoked through natural language, not the Task tool:
+
+- **Explicit:** "Use the api-developer agent to implement the search endpoint"
+- **Automatic:** Describe the task and Claude delegates based on agent `description` fields
+- **View/manage:** Run `/agents` to see all configured agents
+
+Examples:
+```
+"Use the map-developer agent to add flight trail rendering"
+"Have the code-reviewer agent check my changes for security issues"
+"Use the docs-updater agent to update CHANGELOG.md"
+```
+
 ### Key Rules
 - Domain agents write code but do NOT update docs (docs-updater does that last)
 - Run agents sequentially when they edit the same files, parallel when they don't
@@ -173,7 +187,8 @@ adsb/
 │   ├── feeder-stats.sh      # Pi stats reporter template
 │   ├── stats-worker.ts      # Background stats collection
 │   ├── history-recorder.ts  # Saves aircraft positions every 10s
-│   └── history-cleanup.ts   # Removes old position data (retention)
+│   ├── history-cleanup.ts   # Removes old position data (retention)
+│   └── flight-segmenter.ts  # Detects flights from positions, creates Flight records
 ├── docs/
 │   └── PLAN.md              # Original implementation plan
 ├── Dockerfile               # Next.js production build
@@ -185,6 +200,7 @@ adsb/
 - **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location)
 - **FeederStats** - Historical statistics (hourly snapshots)
 - **AircraftPosition** - Historical aircraft position snapshots (hex, lat, lon, altitude, heading, speed, squawk, flight, timestamp)
+- **Flight** - Archived flight records with embedded positions JSON (hex, callsign, start/end times, stats, downsampled positions)
 - **Session/Account/Verification** - Better Auth tables
 
 ### API Tiers
@@ -227,11 +243,37 @@ adsb/
 - [x] Emergency squawk highlighting (7500/7600/7700)
 - [ ] MLAT indicator
 - [x] Aircraft type icons (jet, prop, helicopter)
-- [ ] Range rings and distance/bearing
+- [x] Range rings and distance/bearing (with user location & feeder location privacy)
 - [x] Aircraft list sidebar (sortable table, click to select)
 - [ ] URL sharing, dark/light mode, metric/imperial toggles
 - [x] Historical playback (timeline slider, play/pause, speed control, interpolation)
+- [x] Flight search & replay (search by callsign/hex, flight history table, replay button)
 - [ ] Receiver coverage visualization
+
+### Map Layer Roadmap
+Future map layers to implement (toggleable via Layers panel):
+
+**Flight Tracking**
+- [ ] Flight trails for all aircraft (not just selected)
+- [ ] Altitude/speed-based coloring toggle
+- [ ] Always-on callsign labels
+- [ ] MLAT vs ADS-B indicators
+
+**Coverage & Analysis**
+- [ ] Receiver coverage heatmap
+- [ ] Altitude band shading
+- [ ] Airport markers with ICAO codes
+- [ ] Airspace boundaries (Class B/C/D)
+
+**Weather & Environment**
+- [ ] Weather radar overlay
+- [ ] Wind barbs at altitude
+- [ ] Day/night terminator line
+
+**UI & Styles**
+- [ ] Map style toggle (streets/satellite/dark)
+- [ ] Terrain elevation shading
+- [ ] Lat/lon grid overlay
 
 ### Remaining
 - [ ] Historical charts (feeder stats over time)

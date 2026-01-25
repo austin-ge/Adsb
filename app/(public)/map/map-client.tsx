@@ -23,6 +23,9 @@ import {
 } from "./aircraft-icons";
 import { AircraftSidebar } from "./aircraft-sidebar";
 import { PlaybackControls } from "./playback-controls";
+import { FlightChart, FlightPosition } from "./flight-chart";
+import { RangeRings } from "./range-rings";
+import { MapControls } from "./map-controls";
 
 function buildAircraftGeojson(aircraft: Aircraft[]) {
   return {
@@ -80,11 +83,20 @@ export default function MapPage() {
   // Playback mode state
   const [isPlaybackMode, setIsPlaybackMode] = useState(false);
   const [playbackAircraft, setPlaybackAircraft] = useState<Aircraft[]>([]);
-  const [_playbackTime, setPlaybackTime] = useState<number>(0);
+  const [playbackTime, setPlaybackTime] = useState<number>(0);
   const playbackTrailsRef = useRef<Map<string, TrailPoint[]>>(new Map());
   const playbackAircraftRef = useRef<Aircraft[]>([]);
   const playbackStateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trailVersionRef = useRef(0);
+
+  // Flight replay state (for individual flight playback from search)
+  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
+  const [flightPositions, setFlightPositions] = useState<FlightPosition[]>([]);
+  const [isLoadingFlight, setIsLoadingFlight] = useState(false);
+  const [flightError, setFlightError] = useState<string | null>(null);
+
+  // Range rings state
+  const [rangeRingsCenter, setRangeRingsCenter] = useState<{ lat: number; lng: number } | null>(null);
 
   // Use SWR for aircraft polling with 1-second refresh (paused during playback)
   const { data: aircraftData, isLoading } = useSWR<AircraftResponse>(
@@ -457,7 +469,124 @@ export default function MapPage() {
       clearTimeout(playbackStateThrottleRef.current);
       playbackStateThrottleRef.current = null;
     }
+    // Also clear flight replay state
+    setSelectedFlightId(null);
+    setFlightPositions([]);
+    setFlightError(null);
   }, []);
+
+  // Handle flight selection from search - load flight track and start playback
+  const handleSelectFlight = useCallback(async (flightId: string) => {
+    setIsLoadingFlight(true);
+    setFlightError(null);
+    setSelectedFlightId(flightId);
+
+    try {
+      const response = await fetch(`/api/map/flight/${flightId}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const positions: FlightPosition[] = data.positions || [];
+
+      if (positions.length === 0) {
+        throw new Error("No position data available for this flight");
+      }
+
+      setFlightPositions(positions);
+
+      // Auto-fit map bounds to flight track
+      if (mapRef.current && positions.length > 1) {
+        const lngs = positions.map((p) => p.lon);
+        const lats = positions.map((p) => p.lat);
+        const bounds = new mapboxgl.LngLatBounds(
+          [Math.min(...lngs), Math.min(...lats)],
+          [Math.max(...lngs), Math.max(...lats)]
+        );
+        mapRef.current.fitBounds(bounds, {
+          padding: { top: 100, bottom: 200, left: 350, right: 100 },
+          duration: 1000,
+        });
+      }
+
+      // Convert positions to playback format and trigger playback mode
+      const snapshots = positions.map((pos) => ({
+        timestamp: pos.ts,
+        aircraft: [
+          {
+            hex: data.hex || flightId,
+            lat: pos.lat,
+            lon: pos.lon,
+            altitude: pos.alt,
+            heading: pos.hdg,
+            speed: pos.spd,
+            squawk: null,
+            flight: data.callsign || null,
+          },
+        ],
+      }));
+
+      // Enter playback mode with this flight's data
+      // We'll simulate the playback by setting initial state
+      playbackTrailsRef.current = new Map();
+      setIsPlaybackMode(true);
+      setSelectedHex(null);
+
+      // Set initial playback time to start of flight
+      if (positions.length > 0) {
+        setPlaybackTime(positions[0].ts);
+        // Update with first position
+        handlePlaybackUpdate(snapshots[0].aircraft, positions[0].ts);
+      }
+    } catch (err) {
+      setFlightError(err instanceof Error ? err.message : "Failed to load flight");
+      setSelectedFlightId(null);
+    } finally {
+      setIsLoadingFlight(false);
+    }
+  }, [handlePlaybackUpdate]);
+
+  // Handle range rings center change from map controls
+  const handleRangeRingsChange = useCallback((center: { lat: number; lng: number } | null) => {
+    setRangeRingsCenter(center);
+  }, []);
+
+  // Handle chart seek - update playback to specific time
+  const handleChartSeek = useCallback((time: number) => {
+    if (flightPositions.length === 0) return;
+
+    // Find the position at or before this time
+    let bestIdx = 0;
+    for (let i = 0; i < flightPositions.length; i++) {
+      if (flightPositions[i].ts <= time) {
+        bestIdx = i;
+      } else {
+        break;
+      }
+    }
+
+    const pos = flightPositions[bestIdx];
+    setPlaybackTime(time);
+
+    // Update playback with interpolated position
+    handlePlaybackUpdate(
+      [
+        {
+          hex: selectedFlightId || "unknown",
+          lat: pos.lat,
+          lon: pos.lon,
+          altitude: pos.alt,
+          heading: pos.hdg,
+          speed: pos.spd,
+          squawk: null,
+          flight: null,
+        },
+      ],
+      time
+    );
+  }, [flightPositions, selectedFlightId, handlePlaybackUpdate]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden" role="application" aria-label="Live aircraft tracking map">
@@ -476,6 +605,9 @@ export default function MapPage() {
         onMoveEnd={handleMoveEnd}
         attributionControl={false}
       >
+        {/* Range rings layer - rendered below aircraft */}
+        <RangeRings center={rangeRingsCenter} visible={rangeRingsCenter !== null} />
+
         {/* Flight trail for selected aircraft */}
         <Source id="trail" type="geojson" data={trailGeojson}>
           <Layer
@@ -601,6 +733,12 @@ export default function MapPage() {
         </Source>
       </MapGL>
 
+      {/* Map controls panel - positioned below selected aircraft panel when shown */}
+      <MapControls
+        onRangeRingsChange={handleRangeRingsChange}
+        offsetTop={selectedAircraft ? 300 : 0}
+      />
+
       {/* Aircraft list sidebar */}
       <AircraftSidebar
         aircraft={aircraft}
@@ -609,6 +747,7 @@ export default function MapPage() {
         mapCenter={mapCenter}
         isOpen={sidebarOpen}
         onToggle={handleToggleSidebar}
+        onSelectFlight={handleSelectFlight}
       />
 
       {/* Stats overlay - top left */}
@@ -802,8 +941,51 @@ export default function MapPage() {
         onEnterPlayback={handleEnterPlayback}
       />
 
+      {/* Flight chart panel - shown during flight replay */}
+      {isPlaybackMode && selectedFlightId && flightPositions.length > 0 && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-[min(95vw,800px)] h-40 z-10">
+          <div className="bg-gray-900/95 backdrop-blur-sm rounded-lg border border-gray-700 shadow-xl p-3 h-full">
+            <FlightChart
+              positions={flightPositions}
+              currentTime={playbackTime}
+              onSeek={handleChartSeek}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Flight loading overlay */}
+      {isLoadingFlight && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-30">
+          <div className="bg-gray-800 rounded-lg px-6 py-4 shadow-xl border border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-white text-sm font-medium">Loading flight data...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flight error toast */}
+      {flightError && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
+          <div className="bg-red-900/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-xl border border-red-700">
+            <div className="flex items-center gap-2">
+              <span className="text-red-200 text-sm">{flightError}</span>
+              <button
+                onClick={() => setFlightError(null)}
+                className="text-red-300 hover:text-white ml-2"
+                aria-label="Dismiss error"
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Branding - bottom right (shift up when playback controls visible) */}
-      <div className={`absolute right-4 text-xs text-gray-500 ${isPlaybackMode ? "bottom-24" : "bottom-8"}`}>
+      <div className={`absolute right-4 text-xs text-gray-500 ${isPlaybackMode ? (selectedFlightId ? "bottom-[17rem]" : "bottom-24") : "bottom-8"}`}>
         HangarTrak Radar
       </div>
     </div>
