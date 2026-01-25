@@ -93,7 +93,7 @@ All work happens on `develop` branch (or feature branches off it).
 
 ### Custom Agents (`.claude/agents/`)
 
-Specialized instruction sets for different domains. Invoke by asking Claude to use them:
+Specialized instruction sets for different domains. See **[docs/AGENTS.md](docs/AGENTS.md)** for full documentation including frontmatter schema, when to use custom agents vs Task subagents, and how to create new agents.
 
 **Domain Agents:**
 - `api-developer` — API routes, database queries, backend logic
@@ -120,8 +120,19 @@ Specialized instruction sets for different domains. Invoke by asking Claude to u
 
 Claude reads the agent's instructions from `.claude/agents/[name].md` and follows that specialized context.
 
-### Background Tasks
-For long-running work, Claude can spawn background workers using the Task tool with `general-purpose` subagent type. These run independently and report back when complete. Note: Background tasks don't have access to custom agents.
+### Pre-Commit Checklist
+
+Before committing, run these agents in sequence:
+1. `test-runner` — Verify build, lint, and types pass
+2. `code-reviewer` — Check for performance, accessibility, security issues
+3. `docs-updater` — Update CHANGELOG.md and other docs
+
+### Task Subagents vs Custom Agents
+
+- **Custom agents** run in the main conversation with project-specific context — use for domain work
+- **Task subagents** spawn separate processes with generic knowledge — use for parallel tasks, exploration
+
+See [docs/AGENTS.md](docs/AGENTS.md) for detailed comparison and when to use each.
 
 ## Quick Reference
 
