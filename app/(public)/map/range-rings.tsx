@@ -1,14 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTheme } from "next-themes";
 import { Source, Layer } from "react-map-gl/mapbox";
 import * as turf from "@turf/turf";
-
-// Nautical miles to kilometers conversion
-const NM_TO_KM = 1.852;
-
-// Range ring distances in nautical miles
-const RANGE_DISTANCES_NM = [25, 50, 100, 150, 200];
+import { useUnits, UNIT_CONVERSIONS, getRangeDistances, formatRangeLabel } from "@/lib/units";
 
 interface RangeRingsProps {
   center: { lat: number; lng: number } | null;
@@ -16,6 +12,16 @@ interface RangeRingsProps {
 }
 
 export function RangeRings({ center, visible }: RangeRingsProps) {
+  const { resolvedTheme } = useTheme();
+  const { units } = useUnits();
+
+  // Theme-aware colors for label text
+  const textHaloColor = resolvedTheme === "light" ? "#ffffff" : "#0f172a";
+  const centerStrokeColor = resolvedTheme === "light" ? "#1e3a8a" : "#ffffff";
+
+  // Get range distances based on unit system
+  const rangeDistances = getRangeDistances(units);
+
   // Generate circle polygons using turf.js
   const geojson = useMemo(() => {
     if (!center) {
@@ -27,8 +33,12 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
 
     const features: GeoJSON.Feature[] = [];
 
-    for (const distanceNm of RANGE_DISTANCES_NM) {
-      const distanceKm = distanceNm * NM_TO_KM;
+    for (const distance of rangeDistances) {
+      // Convert distance to kilometers for turf.js
+      const distanceKm = units === "imperial"
+        ? distance * UNIT_CONVERSIONS.NM_TO_KM
+        : distance;
+
       // Generate circle with 64 points for smoothness
       const circle = turf.circle([center.lng, center.lat], distanceKm, {
         steps: 64,
@@ -38,8 +48,8 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
       features.push({
         type: "Feature",
         properties: {
-          distance: distanceNm,
-          label: `${distanceNm}nm`,
+          distance,
+          label: formatRangeLabel(distance, units),
         },
         geometry: circle.geometry,
       });
@@ -49,7 +59,7 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
       type: "FeatureCollection" as const,
       features,
     };
-  }, [center]);
+  }, [center, rangeDistances, units]);
 
   // Generate label points (positioned at the top of each ring)
   const labelGeojson = useMemo(() => {
@@ -62,8 +72,12 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
 
     const features: GeoJSON.Feature[] = [];
 
-    for (const distanceNm of RANGE_DISTANCES_NM) {
-      const distanceKm = distanceNm * NM_TO_KM;
+    for (const distance of rangeDistances) {
+      // Convert distance to kilometers for turf.js
+      const distanceKm = units === "imperial"
+        ? distance * UNIT_CONVERSIONS.NM_TO_KM
+        : distance;
+
       // Calculate point at bearing 0 (north) from center
       const destination = turf.destination(
         [center.lng, center.lat],
@@ -75,7 +89,7 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
       features.push({
         type: "Feature",
         properties: {
-          label: `${distanceNm}nm`,
+          label: formatRangeLabel(distance, units),
         },
         geometry: destination.geometry,
       });
@@ -85,7 +99,7 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
       type: "FeatureCollection" as const,
       features,
     };
-  }, [center]);
+  }, [center, rangeDistances, units]);
 
   // Generate center point for display
   const centerGeojson = useMemo(() => {
@@ -152,10 +166,10 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
             "text-allow-overlap": false,
           }}
           paint={{
-            "text-color": "#60a5fa",
-            "text-halo-color": "#0f172a",
+            "text-color": "#3b82f6",
+            "text-halo-color": textHaloColor,
             "text-halo-width": 1.5,
-            "text-opacity": 0.8,
+            "text-opacity": 0.9,
           }}
         />
       </Source>
@@ -179,7 +193,7 @@ export function RangeRings({ center, visible }: RangeRingsProps) {
             "circle-color": "#3b82f6",
             "circle-opacity": 0.6,
             "circle-stroke-width": 1,
-            "circle-stroke-color": "#ffffff",
+            "circle-stroke-color": centerStrokeColor,
             "circle-stroke-opacity": 0.8,
           }}
         />

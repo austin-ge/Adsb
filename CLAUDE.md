@@ -249,10 +249,11 @@ adsb/
 - [x] Aircraft type icons (jet, prop, helicopter)
 - [x] Range rings and distance/bearing (with user location & feeder location privacy)
 - [x] Aircraft list sidebar (sortable table, click to select)
-- [ ] URL sharing, dark/light mode, metric/imperial toggles
+- [x] URL sharing (selected aircraft hex in URL params)
+- [x] Dark/light mode, metric/imperial toggles
 - [x] Historical playback (timeline slider, play/pause, speed control, interpolation)
 - [x] Flight search & replay (search by callsign/hex, flight history table, replay button)
-- [ ] Receiver coverage visualization
+- [x] Receiver coverage visualization
 
 ### Map Layer Roadmap
 Future map layers to implement (toggleable via Layers panel):
@@ -311,4 +312,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 2026
+**Last Updated:** January 25, 2026

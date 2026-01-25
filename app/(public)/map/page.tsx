@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { UnitsProvider } from "@/lib/units";
 
 const MapClient = dynamic(() => import("./map-client"), {
   ssr: false,
@@ -12,5 +13,9 @@ const MapClient = dynamic(() => import("./map-client"), {
 });
 
 export default function MapPage() {
-  return <MapClient />;
+  return (
+    <UnitsProvider>
+      <MapClient />
+    </UnitsProvider>
+  );
 }

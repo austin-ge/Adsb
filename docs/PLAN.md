@@ -145,15 +145,15 @@ Replace tar1090's default Leaflet map with a custom Mapbox-powered map for a pol
 - [ ] Responsive: full sidebar on desktop, bottom drawer on mobile
 
 #### 6d: User Experience
-- [ ] URL sharing (selected aircraft hex in URL params)
-- [ ] Dark/light mode toggle
-- [ ] Metric/imperial toggle (ft↔m, kts↔km/h)
+- [x] URL sharing (selected aircraft hex in URL params)
+- [x] Dark/light mode toggle
+- [x] Metric/imperial toggle (ft↔m, kts↔km/h)
 - [ ] Keyboard shortcuts (zoom, pan, deselect)
 - [ ] Mobile responsive (bottom sheet info panel)
 
 #### 6e: Advanced Features
-- [ ] Historical playback (scrub through past positions)
-- [ ] Receiver coverage visualization (heatmap of received positions)
+- [x] Historical playback (scrub through past positions)
+- [x] Receiver coverage visualization (heatmap of received positions)
 - [ ] Aircraft filtering (by altitude, type, squawk)
 - [ ] Search by callsign/hex/registration
 

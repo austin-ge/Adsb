@@ -11,6 +11,7 @@ import {
   ReferenceLine,
   ComposedChart,
 } from "recharts";
+import { useUnits, UNIT_CONVERSIONS } from "@/lib/units";
 
 export interface FlightPosition {
   lat: number;
@@ -28,55 +29,80 @@ interface FlightChartProps {
 }
 
 export function FlightChart({ positions, currentTime, onSeek }: FlightChartProps) {
-  // Transform positions into chart data
-  const chartData = useMemo(() => {
-    return positions.map((pos) => ({
-      time: pos.ts,
-      altitude: pos.alt,
-      speed: pos.spd,
-      label: new Date(pos.ts).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    }));
-  }, [positions]);
+  const { units, altitudeUnitShort, speedUnitShort, formatAltitude: formatAltitudeUnit, formatSpeed: formatSpeedUnit } = useUnits();
 
-  // Calculate domain bounds
+  // Transform positions into chart data, converting units as needed
+  const chartData = useMemo(() => {
+    return positions.map((pos) => {
+      let altitude = pos.alt;
+      let speed = pos.spd;
+
+      if (units === "metric") {
+        altitude = pos.alt !== null ? Math.round(pos.alt * UNIT_CONVERSIONS.FEET_TO_METERS) : null;
+        speed = pos.spd !== null ? Math.round(pos.spd * UNIT_CONVERSIONS.KNOTS_TO_KMH) : null;
+      }
+
+      return {
+        time: pos.ts,
+        altitude,
+        speed,
+        // Keep original values for tooltip formatting
+        altitudeFt: pos.alt,
+        speedKts: pos.spd,
+        label: new Date(pos.ts).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+    });
+  }, [positions, units]);
+
+  // Calculate domain bounds based on chart data (already unit-converted)
   const { altMin, altMax, spdMin, spdMax } = useMemo(() => {
     let altMinVal = Infinity;
     let altMaxVal = -Infinity;
     let spdMinVal = Infinity;
     let spdMaxVal = -Infinity;
 
-    for (const pos of positions) {
-      if (pos.alt !== null) {
-        altMinVal = Math.min(altMinVal, pos.alt);
-        altMaxVal = Math.max(altMaxVal, pos.alt);
+    for (const data of chartData) {
+      if (data.altitude !== null) {
+        altMinVal = Math.min(altMinVal, data.altitude);
+        altMaxVal = Math.max(altMaxVal, data.altitude);
       }
-      if (pos.spd !== null) {
-        spdMinVal = Math.min(spdMinVal, pos.spd);
-        spdMaxVal = Math.max(spdMaxVal, pos.spd);
+      if (data.speed !== null) {
+        spdMinVal = Math.min(spdMinVal, data.speed);
+        spdMaxVal = Math.max(spdMaxVal, data.speed);
       }
     }
 
     // Add padding and round to nice values
-    const altPadding = (altMaxVal - altMinVal) * 0.1 || 1000;
-    const spdPadding = (spdMaxVal - spdMinVal) * 0.1 || 50;
+    // Use different rounding for metric vs imperial
+    const altRounding = units === "metric" ? 500 : 1000;
+    const spdRounding = units === "metric" ? 100 : 50;
+    const altPadding = (altMaxVal - altMinVal) * 0.1 || altRounding;
+    const spdPadding = (spdMaxVal - spdMinVal) * 0.1 || spdRounding;
 
     return {
-      altMin: Math.max(0, Math.floor((altMinVal - altPadding) / 1000) * 1000),
-      altMax: Math.ceil((altMaxVal + altPadding) / 1000) * 1000,
-      spdMin: Math.max(0, Math.floor((spdMinVal - spdPadding) / 50) * 50),
-      spdMax: Math.ceil((spdMaxVal + spdPadding) / 50) * 50,
+      altMin: Math.max(0, Math.floor((altMinVal - altPadding) / altRounding) * altRounding),
+      altMax: Math.ceil((altMaxVal + altPadding) / altRounding) * altRounding,
+      spdMin: Math.max(0, Math.floor((spdMinVal - spdPadding) / spdRounding) * spdRounding),
+      spdMax: Math.ceil((spdMaxVal + spdPadding) / spdRounding) * spdRounding,
     };
-  }, [positions]);
+  }, [chartData, units]);
 
-  const formatAltitude = (value: number) => {
-    if (value >= 18000) return `FL${Math.round(value / 100)}`;
-    return `${(value / 1000).toFixed(0)}k`;
+  // Format altitude for axis ticks
+  const formatAltitudeAxis = (value: number) => {
+    if (units === "imperial" && value >= 18000) {
+      return `FL${Math.round(value / 100)}`;
+    }
+    // Use k suffix for large values
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(0)}k`;
+    }
+    return `${value}`;
   };
 
-  const formatSpeed = (value: number) => `${value}`;
+  const formatSpeedAxis = (value: number) => `${value}`;
 
   const formatTime = (ts: number) => {
     return new Date(ts).toLocaleTimeString([], {
@@ -129,13 +155,13 @@ export function FlightChart({ positions, currentTime, onSeek }: FlightChartProps
             yAxisId="altitude"
             orientation="left"
             domain={[altMin, altMax]}
-            tickFormatter={formatAltitude}
+            tickFormatter={formatAltitudeAxis}
             tick={{ fill: "#60a5fa", fontSize: 10 }}
             tickLine={{ stroke: "#4b5563" }}
             axisLine={{ stroke: "#4b5563" }}
             width={40}
             label={{
-              value: "ft",
+              value: altitudeUnitShort,
               angle: -90,
               position: "insideLeft",
               fill: "#60a5fa",
@@ -149,13 +175,13 @@ export function FlightChart({ positions, currentTime, onSeek }: FlightChartProps
             yAxisId="speed"
             orientation="right"
             domain={[spdMin, spdMax]}
-            tickFormatter={formatSpeed}
+            tickFormatter={formatSpeedAxis}
             tick={{ fill: "#34d399", fontSize: 10 }}
             tickLine={{ stroke: "#4b5563" }}
             axisLine={{ stroke: "#4b5563" }}
             width={40}
             label={{
-              value: "kts",
+              value: speedUnitShort,
               angle: 90,
               position: "insideRight",
               fill: "#34d399",
@@ -174,13 +200,21 @@ export function FlightChart({ positions, currentTime, onSeek }: FlightChartProps
             }}
             labelStyle={{ color: "#9ca3af", marginBottom: "4px" }}
             labelFormatter={(value) => formatTime(value as number)}
-            formatter={(value: number, name: string) => {
+            formatter={(value: number, name: string, props: { payload?: { altitudeFt?: number; speedKts?: number } }) => {
               if (name === "altitude") {
-                const alt = value;
-                if (alt >= 18000) return [`FL${Math.round(alt / 100)}`, "Altitude"];
-                return [`${alt.toLocaleString()} ft`, "Altitude"];
+                // Use original feet value for proper formatting
+                const altFt = props.payload?.altitudeFt;
+                if (altFt !== undefined && altFt !== null) {
+                  return [formatAltitudeUnit(altFt), "Altitude"];
+                }
+                return [formatAltitudeUnit(value), "Altitude"];
               }
-              return [`${Math.round(value)} kts`, "Speed"];
+              // Use original knots value for proper formatting
+              const spdKts = props.payload?.speedKts;
+              if (spdKts !== undefined && spdKts !== null) {
+                return [formatSpeedUnit(spdKts), "Speed"];
+              }
+              return [formatSpeedUnit(value), "Speed"];
             }}
           />
 

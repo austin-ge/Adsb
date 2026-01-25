@@ -3,14 +3,13 @@
 import { useMemo, useState } from "react";
 import {
   Aircraft,
-  formatAltitude,
-  formatSpeed,
   getAltitudeColor,
   getDistanceNm,
   getEmergencyInfo,
 } from "./types";
 import { FlightSearch } from "./flight-search";
 import { Radio, Search } from "lucide-react";
+import { useUnits } from "@/lib/units";
 
 type SortField = "callsign" | "altitude" | "speed" | "squawk" | "distance";
 type SidebarTab = "live" | "search";
@@ -37,6 +36,7 @@ export function AircraftSidebar({
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("distance");
   const [activeTab, setActiveTab] = useState<SidebarTab>("live");
+  const { formatAltitude, formatSpeed, formatDistanceShort } = useUnits();
 
   const filteredAndSorted = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -226,7 +226,7 @@ export function AircraftSidebar({
                       <span>{formatAltitude(ac.altitude)}</span>
                       <span>{formatSpeed(ac.ground_speed)}</span>
                       <span className="ml-auto text-gray-500">
-                        {Math.round(ac.distance)} nm
+                        {formatDistanceShort(ac.distance)}
                       </span>
                     </div>
                   </button>

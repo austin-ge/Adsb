@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import { Search, ChevronDown, ChevronRight, Play, Plane } from "lucide-react";
+import { useUnits } from "@/lib/units";
 
 export interface FlightSearchResult {
   hex: string;
@@ -37,6 +38,7 @@ export function FlightSearch({ onSelectFlight }: FlightSearchProps) {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [expandedHex, setExpandedHex] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { formatAltitude } = useUnits();
 
   // Debounce search input by 300ms
   useEffect(() => {
@@ -90,12 +92,6 @@ export function FlightSearch({ onSelectFlight }: FlightSearchProps) {
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const formatAltitude = (alt: number | null) => {
-    if (alt === null) return "--";
-    if (alt >= 18000) return `FL${Math.round(alt / 100)}`;
-    return `${alt.toLocaleString()} ft`;
   };
 
   const results = data?.results ?? [];

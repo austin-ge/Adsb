@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Dark/light mode toggle with system preference support (Light/Dark/Auto in Layers panel)
+- Receiver coverage heatmap layer showing historical position density
+- Metric/imperial units toggle with conversions for altitude (ft/m), speed (kts/km/h), and distance (nm/km)
+- URL sharing for aircraft selection (map links include `?aircraft=HEX` param to persist selected aircraft)
 - Historical playback for the live aircraft map with timeline slider, play/pause, speed control (1x/2x/5x/10x), smooth position interpolation between snapshots, flight trails during playback, and a "LIVE" button to return to real-time view
 - `AircraftPosition` Prisma model for storing periodic aircraft position snapshots (hex, lat, lon, altitude, heading, speed, squawk, flight, timestamp)
 - History recorder script (`scripts/history-recorder.ts`) that saves aircraft positions every 10 seconds via the internal snapshot API
