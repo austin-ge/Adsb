@@ -44,6 +44,7 @@ interface Feeder {
   name: string;
   latitude: number | null;
   longitude: number | null;
+  softwareType: string | null;
   messagesTotal: string;
   positionsTotal: string;
   aircraftSeen: number;
@@ -77,6 +78,19 @@ function formatLastSeen(lastSeen: string | null): string {
   if (hours < 24) return `${hours} hours ago`;
   if (days < 7) return `${days} days ago`;
   return formatDate(lastSeen);
+}
+
+function formatSoftwareType(softwareType: string | null): string | null {
+  if (!softwareType) return null;
+  const softwareNames: Record<string, string> = {
+    ultrafeeder: "adsb.im / Ultrafeeder",
+    piaware: "PiAware",
+    fr24: "FlightRadar24",
+    readsb: "readsb",
+    "dump1090-fa": "dump1090-fa",
+    "dump1090-mutability": "dump1090-mutability",
+  };
+  return softwareNames[softwareType] || softwareType;
 }
 
 export default function FeederDetailPage({
@@ -403,6 +417,12 @@ export default function FeederDetailPage({
                 </Button>
               </div>
             </div>
+            {formatSoftwareType(feeder.softwareType) && (
+              <div>
+                <Label className="text-muted-foreground">Software</Label>
+                <p className="mt-1">{formatSoftwareType(feeder.softwareType)}</p>
+              </div>
+            )}
             {(feeder.latitude || feeder.longitude) && (
               <div>
                 <Label className="text-muted-foreground">Location</Label>

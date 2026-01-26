@@ -6,6 +6,18 @@ interface RouteParams {
   params: Promise<{ uuid: string }>;
 }
 
+// Allowed software types for validation
+const ALLOWED_SOFTWARE_TYPES = [
+  "ultrafeeder",
+  "piaware",
+  "fr24",
+  "readsb",
+  "dump1090-fa",
+  "dump1090-mutability",
+] as const;
+
+type SoftwareType = (typeof ALLOWED_SOFTWARE_TYPES)[number];
+
 interface HeartbeatPayload {
   // From readsb stats.json
   now?: number;
@@ -26,6 +38,7 @@ interface HeartbeatPayload {
   // Optional metadata
   version?: string;
   uptime?: number;
+  softwareType?: string;
 }
 
 // POST /api/v1/feeders/:uuid/heartbeat
@@ -108,7 +121,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
   }
 
+  // Validate and extract softwareType (only accept allowed values)
+  let validatedSoftwareType: SoftwareType | undefined;
+  if (
+    payload.softwareType &&
+    ALLOWED_SOFTWARE_TYPES.includes(payload.softwareType as SoftwareType)
+  ) {
+    validatedSoftwareType = payload.softwareType as SoftwareType;
+  }
+
   try {
+    // Determine if we should update softwareType (first heartbeat wins)
+    const shouldUpdateSoftwareType =
+      validatedSoftwareType && !feeder.softwareType;
+
     // Update feeder stats and auto-upgrade user tier in parallel
     const [updatedFeeder] = await Promise.all([
       prisma.feeder.update({
@@ -123,6 +149,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           aircraftSeen: Math.max(feeder.aircraftSeen, aircraftCount),
           lastSeen: new Date(),
           isOnline: true,
+          ...(shouldUpdateSoftwareType && {
+            softwareType: validatedSoftwareType,
+          }),
         },
       }),
       feeder.user.apiTier === "FREE"
@@ -142,6 +171,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         messagesTotal: updatedFeeder.messagesTotal.toString(),
         positionsTotal: updatedFeeder.positionsTotal.toString(),
         aircraftSeen: updatedFeeder.aircraftSeen,
+        ...(updatedFeeder.softwareType && {
+          softwareType: updatedFeeder.softwareType,
+        }),
       },
     });
   } catch (error) {

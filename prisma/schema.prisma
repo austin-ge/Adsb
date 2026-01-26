@@ -92,6 +92,7 @@ model Feeder {
   latitude       Float?
   longitude      Float?
   heartbeatToken String  @unique // Token for authenticating heartbeat requests
+  softwareType   String? // Detected software: ultrafeeder, piaware, fr24, readsb, dump1090-fa, dump1090-mutability
 
   // Owner
   userId String

@@ -47,6 +47,14 @@ exit 1
 # 1. Feed ADS-B data to the HangarTrak network (Beast protocol)
 # 2. Report feeder stats to the API (for tracking/leaderboards)
 #
+# Supported feeder software:
+# - adsb.im / Ultrafeeder (Docker)
+# - PiAware (FlightAware)
+# - FR24 Pi Image (FlightRadar24)
+# - readsb standalone
+# - dump1090-fa
+# - dump1090-mutability
+#
 # Run with: curl -sSL ${serverUrl}/api/install/${feeder.uuid} | sudo bash
 
 set -e
@@ -84,65 +92,266 @@ echo "\$HEARTBEAT_TOKEN" > "\$INSTALL_DIR/token"
 chmod 600 "\$INSTALL_DIR/token"
 
 #######################################
+# Feeder Software Detection
+#######################################
+
+detect_feeder_software() {
+  # Check for adsb.im / Ultrafeeder (Docker-based)
+  if command -v docker &>/dev/null; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qi "ultrafeeder"; then
+      echo "ultrafeeder"
+      return
+    fi
+  fi
+
+  # Check for PiAware
+  if [ -f "/usr/bin/piaware" ] || systemctl is-active piaware &>/dev/null; then
+    echo "piaware"
+    return
+  fi
+
+  # Check for FR24 feeder
+  if systemctl is-active fr24feed &>/dev/null || [ -f "/etc/fr24feed.ini" ]; then
+    echo "fr24"
+    return
+  fi
+
+  # Check for dump1090-mutability
+  if [ -f "/usr/bin/dump1090-mutability" ] || [ -f "/etc/default/dump1090-mutability" ]; then
+    echo "dump1090-mutability"
+    return
+  fi
+
+  # Check for dump1090-fa (without piaware)
+  if [ -f "/usr/bin/dump1090-fa" ] || [ -f "/etc/default/dump1090-fa" ]; then
+    echo "dump1090-fa"
+    return
+  fi
+
+  # Check for readsb standalone (systemd service, no Docker)
+  if systemctl is-active readsb &>/dev/null || [ -f "/etc/default/readsb" ]; then
+    echo "readsb"
+    return
+  fi
+
+  echo "unknown"
+}
+
+#######################################
 # PART 1: Configure Beast Feed
 #######################################
 
-READSB_CONFIG="/etc/default/readsb"
-ULTRAFEEDER_CONFIG="/opt/adsb/config/ultrafeeder/.env"
+configure_ultrafeeder() {
+  echo "Configuring Ultrafeeder (Docker)..."
+
+  # Check common adsb.im config locations
+  local ENV_FILE=""
+  if [ -f "/opt/adsb/.env" ]; then
+    ENV_FILE="/opt/adsb/.env"
+  elif [ -f "/opt/adsb/config/ultrafeeder/.env" ]; then
+    ENV_FILE="/opt/adsb/config/ultrafeeder/.env"
+  fi
+
+  if [ -n "\$ENV_FILE" ]; then
+    echo "Found Ultrafeeder config at \$ENV_FILE"
+
+    if grep -q "\${SERVER}" "\$ENV_FILE" 2>/dev/null; then
+      echo "Already configured to feed to \${SERVER}"
+    else
+      # Add to ULTRAFEEDER_CONFIG
+      if grep -q "^ULTRAFEEDER_CONFIG=" "\$ENV_FILE"; then
+        # Append to existing ULTRAFEEDER_CONFIG
+        sed -i "s|^ULTRAFEEDER_CONFIG=\\(.*\\)\"|ULTRAFEEDER_CONFIG=\\1;adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$ENV_FILE"
+      else
+        echo "ULTRAFEEDER_CONFIG=\"adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$ENV_FILE"
+      fi
+      echo "Ultrafeeder configured."
+      echo ""
+      echo "IMPORTANT: Please restart your Docker containers manually:"
+      echo "  cd /opt/adsb && docker compose up -d"
+    fi
+  else
+    echo "WARNING: Could not find Ultrafeeder config file."
+    echo "Please add this to your ULTRAFEEDER_CONFIG:"
+    echo "  adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out"
+  fi
+}
+
+configure_piaware() {
+  echo "Configuring PiAware / dump1090-fa..."
+
+  local CONFIG_FILE="/etc/default/dump1090-fa"
+
+  if [ -f "\$CONFIG_FILE" ]; then
+    echo "Found dump1090-fa configuration at \$CONFIG_FILE"
+
+    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$CONFIG_FILE" 2>/dev/null; then
+      echo "Already configured to feed to \${SERVER}"
+    else
+      # Add net-connector to RECEIVER_OPTIONS or NET_OPTIONS
+      if grep -q "^RECEIVER_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^RECEIVER_OPTIONS=\"\\(.*\\)\"|RECEIVER_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      elif grep -q "^NET_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^NET_OPTIONS=\"\\(.*\\)\"|NET_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      else
+        echo "NET_OPTIONS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$CONFIG_FILE"
+      fi
+      echo "dump1090-fa configured. Will restart after stats setup."
+    fi
+  else
+    echo "WARNING: Could not find dump1090-fa config at \$CONFIG_FILE"
+    echo "Please add --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out to your configuration."
+  fi
+}
+
+configure_fr24() {
+  echo "Configuring FR24 Pi Image / dump1090..."
+
+  local CONFIG_FILE="/etc/default/dump1090"
+
+  if [ -f "\$CONFIG_FILE" ]; then
+    echo "Found dump1090 configuration at \$CONFIG_FILE"
+
+    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$CONFIG_FILE" 2>/dev/null; then
+      echo "Already configured to feed to \${SERVER}"
+    else
+      if grep -q "^RECEIVER_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^RECEIVER_OPTIONS=\"\\(.*\\)\"|RECEIVER_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      elif grep -q "^EXTRA_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^EXTRA_OPTIONS=\"\\(.*\\)\"|EXTRA_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      else
+        echo "EXTRA_OPTIONS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$CONFIG_FILE"
+      fi
+      echo "dump1090 configured. Will restart after stats setup."
+    fi
+  else
+    echo "WARNING: Could not find dump1090 config at \$CONFIG_FILE"
+    echo "Please add --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out to your configuration."
+  fi
+}
 
 configure_readsb() {
-  if [ -f "\$READSB_CONFIG" ]; then
-    echo "Found readsb configuration at \$READSB_CONFIG"
+  echo "Configuring readsb..."
 
-    # Check if already configured for this server
-    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$READSB_CONFIG" 2>/dev/null; then
+  local CONFIG_FILE="/etc/default/readsb"
+
+  if [ -f "\$CONFIG_FILE" ]; then
+    echo "Found readsb configuration at \$CONFIG_FILE"
+
+    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$CONFIG_FILE" 2>/dev/null; then
       echo "Already configured to feed to \${SERVER}"
     else
-      # Add net-connector (without UUID - stats are reported separately)
-      if grep -q "NET_OPTIONS=" "\$READSB_CONFIG"; then
-        # Append to existing NET_OPTIONS
-        sed -i "s|NET_OPTIONS=\"\\(.*\\)\"|NET_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$READSB_CONFIG"
+      if grep -q "^NET_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^NET_OPTIONS=\"\\(.*\\)\"|NET_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
       else
-        echo "NET_OPTIONS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$READSB_CONFIG"
+        echo "NET_OPTIONS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$CONFIG_FILE"
       fi
-      echo "Beast feed configured. Will restart readsb after stats setup."
+      echo "readsb configured. Will restart after stats setup."
     fi
-    return 0
+  else
+    echo "WARNING: Could not find readsb config at \$CONFIG_FILE"
+    echo "Please add --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out to your configuration."
   fi
-  return 1
 }
 
-configure_ultrafeeder() {
-  if [ -f "\$ULTRAFEEDER_CONFIG" ]; then
-    echo "Found ultrafeeder configuration at \$ULTRAFEEDER_CONFIG"
+configure_dump1090_fa() {
+  echo "Configuring dump1090-fa (standalone)..."
 
-    if grep -q "\${SERVER}" "\$ULTRAFEEDER_CONFIG" 2>/dev/null; then
+  local CONFIG_FILE="/etc/default/dump1090-fa"
+
+  if [ -f "\$CONFIG_FILE" ]; then
+    echo "Found dump1090-fa configuration at \$CONFIG_FILE"
+
+    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$CONFIG_FILE" 2>/dev/null; then
       echo "Already configured to feed to \${SERVER}"
     else
-      if grep -q "ULTRAFEEDER_CONFIG=" "\$ULTRAFEEDER_CONFIG"; then
-        sed -i "s|ULTRAFEEDER_CONFIG=\"\\(.*\\)\"|ULTRAFEEDER_CONFIG=\"\\1;adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$ULTRAFEEDER_CONFIG"
+      if grep -q "^RECEIVER_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^RECEIVER_OPTIONS=\"\\(.*\\)\"|RECEIVER_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      elif grep -q "^NET_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^NET_OPTIONS=\"\\(.*\\)\"|NET_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
       else
-        echo "ULTRAFEEDER_CONFIG=\"adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$ULTRAFEEDER_CONFIG"
+        echo "NET_OPTIONS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$CONFIG_FILE"
       fi
-      echo "Ultrafeeder configured. Please restart your container manually."
+      echo "dump1090-fa configured. Will restart after stats setup."
     fi
-    return 0
+  else
+    echo "WARNING: Could not find dump1090-fa config at \$CONFIG_FILE"
+    echo "Please add --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out to your configuration."
   fi
-  return 1
 }
+
+configure_dump1090_mutability() {
+  echo "Configuring dump1090-mutability..."
+
+  local CONFIG_FILE="/etc/default/dump1090-mutability"
+
+  if [ -f "\$CONFIG_FILE" ]; then
+    echo "Found dump1090-mutability configuration at \$CONFIG_FILE"
+
+    if grep -q "\${SERVER}.*\${BEAST_PORT}" "\$CONFIG_FILE" 2>/dev/null; then
+      echo "Already configured to feed to \${SERVER}"
+    else
+      if grep -q "^NET_OUTPUT_OPTIONS=" "\$CONFIG_FILE"; then
+        sed -i "s|^NET_OUTPUT_OPTIONS=\"\\(.*\\)\"|NET_OUTPUT_OPTIONS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      elif grep -q "^EXTRA_ARGS=" "\$CONFIG_FILE"; then
+        sed -i "s|^EXTRA_ARGS=\"\\(.*\\)\"|EXTRA_ARGS=\"\\1 --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"|" "\$CONFIG_FILE"
+      else
+        echo "EXTRA_ARGS=\"--net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out\"" >> "\$CONFIG_FILE"
+      fi
+      echo "dump1090-mutability configured. Will restart after stats setup."
+    fi
+  else
+    echo "WARNING: Could not find dump1090-mutability config at \$CONFIG_FILE"
+    echo "Please add --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out to your configuration."
+  fi
+}
+
+echo ""
+echo "Detecting feeder software..."
+SOFTWARE_TYPE=\$(detect_feeder_software)
+echo "Detected: \$SOFTWARE_TYPE"
+
+# Store software type
+echo "\$SOFTWARE_TYPE" > "\$INSTALL_DIR/software-type"
+chmod 644 "\$INSTALL_DIR/software-type"
 
 echo ""
 echo "Configuring Beast feed..."
 FEED_CONFIGURED=0
-if configure_readsb; then FEED_CONFIGURED=1; fi
-if configure_ultrafeeder; then FEED_CONFIGURED=1; fi
 
-if [ \$FEED_CONFIGURED -eq 0 ]; then
-  echo ""
-  echo "Could not auto-configure feed. Manual configuration:"
-  echo "  For readsb: --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out"
-  echo "  For ultrafeeder: adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out"
-fi
+case "\$SOFTWARE_TYPE" in
+  ultrafeeder)
+    configure_ultrafeeder
+    FEED_CONFIGURED=1
+    ;;
+  piaware)
+    configure_piaware
+    FEED_CONFIGURED=1
+    ;;
+  fr24)
+    configure_fr24
+    FEED_CONFIGURED=1
+    ;;
+  readsb)
+    configure_readsb
+    FEED_CONFIGURED=1
+    ;;
+  dump1090-fa)
+    configure_dump1090_fa
+    FEED_CONFIGURED=1
+    ;;
+  dump1090-mutability)
+    configure_dump1090_mutability
+    FEED_CONFIGURED=1
+    ;;
+  *)
+    echo ""
+    echo "Could not auto-detect feeder software."
+    echo "Manual configuration options:"
+    echo "  For readsb/dump1090: --net-connector=\${SERVER},\${BEAST_PORT},beast_reduce_plus_out"
+    echo "  For ultrafeeder: adsb,\${SERVER},\${BEAST_PORT},beast_reduce_plus_out"
+    ;;
+esac
 
 #######################################
 # PART 2: Install Stats Reporter
@@ -162,9 +371,19 @@ REMOTE_URL="__SERVER_URL__/api/v1/feeders/__UUID__/heartbeat"
 UUID="__UUID__"
 UUID_FILE="/usr/local/share/hangartrak-radar/uuid"
 TOKEN_FILE="/usr/local/share/hangartrak-radar/token"
+SOFTWARE_TYPE_FILE="/usr/local/share/hangartrak-radar/software-type"
 HEARTBEAT_TOKEN=""
+SOFTWARE_TYPE="unknown"
 
-JSON_PATHS=("/run/readsb" "/run/dump1090-fa" "/run/dump1090")
+# Stats file paths for different feeder software
+JSON_PATHS=(
+  "/run/readsb"
+  "/run/dump1090-fa"
+  "/run/dump1090"
+  "/run/dump1090-mutability"
+  "/opt/adsb/data/readsb"
+)
+
 WAIT_TIME=30
 MAX_CURL_TIME=10
 
@@ -181,6 +400,11 @@ if [ -f "\$TOKEN_FILE" ]; then
     HEARTBEAT_TOKEN=\$(cat "\$TOKEN_FILE")
 fi
 
+# Load software type from file
+if [ -f "\$SOFTWARE_TYPE_FILE" ]; then
+    SOFTWARE_TYPE=\$(cat "\$SOFTWARE_TYPE_FILE")
+fi
+
 if [ -z "\$HEARTBEAT_TOKEN" ]; then
     echo "FATAL: No heartbeat token found. Re-run the install script."
     exit 1
@@ -190,6 +414,55 @@ fi
 if ! [[ \$UUID =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\$ ]]; then
     echo "FATAL: Invalid UUID [\$UUID]"
     exit 1
+fi
+
+# Feeder software detection function (for dynamic detection)
+detect_feeder_software() {
+  # Check for adsb.im / Ultrafeeder (Docker-based)
+  if command -v docker &>/dev/null; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qi "ultrafeeder"; then
+      echo "ultrafeeder"
+      return
+    fi
+  fi
+
+  # Check for PiAware
+  if [ -f "/usr/bin/piaware" ] || systemctl is-active piaware &>/dev/null; then
+    echo "piaware"
+    return
+  fi
+
+  # Check for FR24 feeder
+  if systemctl is-active fr24feed &>/dev/null || [ -f "/etc/fr24feed.ini" ]; then
+    echo "fr24"
+    return
+  fi
+
+  # Check for dump1090-mutability
+  if [ -f "/usr/bin/dump1090-mutability" ] || [ -f "/etc/default/dump1090-mutability" ]; then
+    echo "dump1090-mutability"
+    return
+  fi
+
+  # Check for dump1090-fa (without piaware)
+  if [ -f "/usr/bin/dump1090-fa" ] || [ -f "/etc/default/dump1090-fa" ]; then
+    echo "dump1090-fa"
+    return
+  fi
+
+  # Check for readsb standalone (systemd service, no Docker)
+  if systemctl is-active readsb &>/dev/null || [ -f "/etc/default/readsb" ]; then
+    echo "readsb"
+    return
+  fi
+
+  echo "unknown"
+}
+
+# Re-detect software type if unknown or file doesn't exist
+if [ "\$SOFTWARE_TYPE" = "unknown" ] || [ ! -f "\$SOFTWARE_TYPE_FILE" ]; then
+    SOFTWARE_TYPE=\$(detect_feeder_software)
+    echo "\$SOFTWARE_TYPE" > "\$SOFTWARE_TYPE_FILE" 2>/dev/null || true
 fi
 
 # Find JSON directory
@@ -206,7 +479,7 @@ if [ "x\$JSON_DIR" = "x" ]; then
     exit 2
 fi
 
-echo "Stats Reporter: UUID=\$UUID JSON=\$JSON_DIR"
+echo "Stats Reporter: UUID=\$UUID JSON=\$JSON_DIR SOFTWARE=\$SOFTWARE_TYPE"
 
 STATS_FILE="\${JSON_DIR}/stats.json"
 PREV_MESSAGES=0
@@ -243,10 +516,11 @@ while true; do
             --argjson aircraft "\$AIRCRAFT" \\
             --argjson messages "\$MSG_DELTA" \\
             --argjson positions "\$POS_DELTA" \\
-            '{uuid: \$uuid, now: \$now, aircraft_with_pos: \$aircraft, messages: \$messages, positions: \$positions}')
+            --arg softwareType "\$SOFTWARE_TYPE" \\
+            '{uuid: \$uuid, now: \$now, aircraft_with_pos: \$aircraft, messages: \$messages, positions: \$positions, softwareType: \$softwareType}')
     else
         AIRCRAFT=\$(grep -oP '"aircraft_with_pos"\\s*:\\s*\\K\\d+' "\$STATS_FILE" 2>/dev/null || echo "0")
-        PAYLOAD="{\"uuid\":\"\$UUID\",\"now\":\$NOW,\"aircraft_with_pos\":\$AIRCRAFT,\"messages\":0,\"positions\":0}"
+        PAYLOAD="{\"uuid\":\"\$UUID\",\"now\":\$NOW,\"aircraft_with_pos\":\$AIRCRAFT,\"messages\":0,\"positions\":0,\"softwareType\":\"\$SOFTWARE_TYPE\"}"
         MSG_DELTA=0
         POS_DELTA=0
     fi
@@ -255,7 +529,7 @@ while true; do
     RV=\$?
 
     if [ \$RV -eq 0 ] && echo "\$RESPONSE" | grep -q '"success":true'; then
-        echo "[\$(date -Iseconds)] OK: aircraft=\$AIRCRAFT msgs=\$MSG_DELTA pos=\$POS_DELTA"
+        echo "[\$(date -Iseconds)] OK: aircraft=\$AIRCRAFT msgs=\$MSG_DELTA pos=\$POS_DELTA software=\$SOFTWARE_TYPE"
     else
         echo "[\$(date -Iseconds)] ERROR: \$RESPONSE"
     fi
@@ -273,7 +547,7 @@ chmod +x "\$INSTALL_DIR/feeder-stats.sh"
 cat > "/etc/systemd/system/\${SERVICE_NAME}.service" << EOF
 [Unit]
 Description=HangarTrak Radar Stats Reporter
-After=network.target readsb.service
+After=network.target readsb.service dump1090-fa.service dump1090.service piaware.service
 
 [Service]
 Type=simple
@@ -292,17 +566,38 @@ systemctl daemon-reload
 systemctl enable "\${SERVICE_NAME}.service"
 systemctl start "\${SERVICE_NAME}.service"
 
-# Restart readsb if we configured it
-if [ -f "\$READSB_CONFIG" ]; then
-  echo ""
-  echo "Restarting readsb..."
-  systemctl restart readsb || true
-fi
+# Restart the appropriate service if we configured it
+echo ""
+case "\$SOFTWARE_TYPE" in
+  readsb)
+    echo "Restarting readsb..."
+    systemctl restart readsb 2>/dev/null || true
+    ;;
+  piaware|dump1090-fa)
+    echo "Restarting dump1090-fa..."
+    systemctl restart dump1090-fa 2>/dev/null || true
+    ;;
+  fr24)
+    echo "Restarting dump1090..."
+    systemctl restart dump1090 2>/dev/null || true
+    ;;
+  dump1090-mutability)
+    echo "Restarting dump1090-mutability..."
+    systemctl restart dump1090-mutability 2>/dev/null || true
+    ;;
+  ultrafeeder)
+    echo ""
+    echo "NOTE: Ultrafeeder (Docker) requires manual restart:"
+    echo "  cd /opt/adsb && docker compose up -d"
+    ;;
+esac
 
 echo ""
 echo "======================================"
 echo "Setup Complete!"
 echo "======================================"
+echo ""
+echo "Detected Software: \$SOFTWARE_TYPE"
 echo ""
 echo "Your feeder is now:"
 echo "  1. Sending ADS-B data to \${SERVER}:\${BEAST_PORT}"
