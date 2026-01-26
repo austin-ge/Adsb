@@ -239,13 +239,24 @@ npx tsx scripts/history-cleanup.ts   # Clean old position data
 
 ## 10. Remaining Work
 
-- [ ] Historical charts (feeder stats over time)
-- [ ] Rate limiting - Redis-backed for production
-- [ ] API documentation page (content)
+See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 7-12).
+
+**Immediate Priorities (Phase 7):**
+- [ ] Feeder scoring system (composite score from uptime, message rate, position rate, aircraft count)
+- [ ] Range tracking (max/avg range per feeder using Haversine formula)
+- [ ] Uptime visualization (7-day chart)
+- [ ] Enhanced leaderboard (regional rankings, score column, search)
+
+**Technical Debt:**
+- [ ] Redis-backed rate limiting (currently in-memory)
+- [ ] Gzip compression on API responses
+- [ ] IndexedDB caching for static data (airports, aircraft types)
+
+**Integration:**
 - [ ] HangarTrak integration (update HangarTrak to consume this API)
 - [ ] Production deployment to Dokploy
 - [ ] Stripe integration for PRO tier
 
 ---
 
-*Last Updated: January 24, 2026*
+*Last Updated: January 25, 2026 (Phase 6 Complete)*

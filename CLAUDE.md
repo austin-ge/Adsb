@@ -286,50 +286,37 @@ adsb/
 - [x] Landing page
 - [x] HangarTrak branding
 
-### In Progress
-- [x] Custom Mapbox live map (Phase 6a core complete)
+### Phase 6 Complete (Live Map)
+- [x] Custom Mapbox live map with altitude coloring
 - [x] Flight trails/history for selected aircraft
+- [x] Flight trails for all aircraft (toggleable layer)
 - [x] Emergency squawk highlighting (7500/7600/7700)
-- [ ] MLAT indicator
 - [x] Aircraft type icons (jet, prop, helicopter)
-- [x] Range rings and distance/bearing (with user location & feeder location privacy)
+- [x] Range rings and distance/bearing
 - [x] Aircraft list sidebar (sortable table, click to select)
 - [x] URL sharing (selected aircraft hex in URL params)
 - [x] Dark/light mode, metric/imperial toggles
-- [x] Historical playback (timeline slider, play/pause, speed control, interpolation)
-- [x] Flight search & replay (search by callsign/hex, flight history table, replay button)
-- [x] Receiver coverage visualization
+- [x] Historical playback (timeline, play/pause, speed control, interpolation)
+- [x] Flight search & replay
+- [x] Receiver coverage heatmap
+- [x] Airport markers with ICAO codes
+- [x] Map style selector (streets/satellite/dark)
 
-### Map Layer Roadmap
-Future map layers to implement (toggleable via Layers panel):
+### Next Up (Phase 7 - Feeder Dashboard)
+See [ROADMAP.md](docs/ROADMAP.md) for the full development plan.
 
-**Flight Tracking**
-- [x] Flight trails for all aircraft (not just selected)
+- [ ] Feeder scoring system (composite score)
+- [ ] Range tracking (max/avg per feeder)
+- [ ] Uptime visualization (7-day chart)
+- [ ] Enhanced leaderboard (regional rankings, search)
+
+### Future Map Enhancements
+- [ ] MLAT vs ADS-B indicators
 - [ ] Altitude/speed-based coloring toggle
 - [ ] Always-on callsign labels
-- [ ] MLAT vs ADS-B indicators
-
-**Coverage & Analysis**
-- [x] Receiver coverage heatmap
-- [ ] Altitude band shading
-- [x] Airport markers with ICAO codes
 - [ ] Airspace boundaries (Class B/C/D)
-
-**Weather & Environment**
 - [ ] Weather radar overlay
-- [ ] Wind barbs at altitude
 - [ ] Day/night terminator line
-
-**UI & Styles**
-- [ ] Map style toggle (streets/satellite/dark)
-- [ ] Terrain elevation shading
-- [ ] Lat/lon grid overlay
-
-### Remaining
-- [ ] Historical charts (feeder stats over time)
-- [ ] API documentation page (content)
-- [ ] HangarTrak integration (update HangarTrak to use this API)
-- [ ] Production deployment to Dokploy
 
 ## HangarTrak Integration Points
 
@@ -357,4 +344,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 25, 2026 (Phase 7 Roadmap Created)
+**Last Updated:** January 25, 2026 (Phase 6 Complete, Phase 7 Planning)
