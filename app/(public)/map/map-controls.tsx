@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import useSWR from "swr";
 import { useTheme } from "next-themes";
-import { Layers, MapPin, Radio, X, Loader2, Sun, Moon, Monitor, Ruler, Flame, Plane, Map as MapIcon, Satellite } from "lucide-react";
+import { Layers, MapPin, Radio, X, Loader2, Sun, Moon, Monitor, Ruler, Flame, Plane, Map as MapIcon, Satellite, Route } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { Switch } from "@/components/ui/switch";
 import { fetcher } from "@/lib/fetcher";
@@ -27,6 +27,7 @@ interface MapControlsProps {
   onRangeRingsChange: (center: { lat: number; lng: number } | null) => void;
   onCoverageHeatmapChange: (enabled: boolean) => void;
   onAirportMarkersChange: (enabled: boolean) => void;
+  onAllTrailsChange: (enabled: boolean) => void;
   onThemeChange?: (theme: MapTheme) => void;
   mapStyleKey: MapStyleKey;
   onMapStyleChange: (style: MapStyleKey) => void;
@@ -41,6 +42,7 @@ interface StoredPreferences {
   myLocation: { lat: number; lng: number } | null;
   coverageHeatmapEnabled: boolean;
   airportMarkersEnabled: boolean;
+  allTrailsEnabled: boolean;
 }
 
 function loadPreferences(): Partial<StoredPreferences> {
@@ -131,7 +133,7 @@ function UnitsSection() {
   );
 }
 
-export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAirportMarkersChange, onThemeChange, mapStyleKey, onMapStyleChange, offsetTop = 0 }: MapControlsProps) {
+export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAirportMarkersChange, onAllTrailsChange, onThemeChange, mapStyleKey, onMapStyleChange, offsetTop = 0 }: MapControlsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [rangeRingsEnabled, setRangeRingsEnabled] = useState(false);
   const [centerSource, setCenterSource] = useState<CenterSource>("my-location");
@@ -141,6 +143,7 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAir
   const [mounted, setMounted] = useState(false);
   const [coverageHeatmapEnabled, setCoverageHeatmapEnabled] = useState(false);
   const [airportMarkersEnabled, setAirportMarkersEnabled] = useState(false);
+  const [allTrailsEnabled, setAllTrailsEnabled] = useState(false);
 
   // Theme management
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -185,15 +188,23 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAir
     if (prefs.myLocation) {
       setMyLocation(prefs.myLocation);
     }
-    if (prefs.coverageHeatmapEnabled !== undefined) {
-      setCoverageHeatmapEnabled(prefs.coverageHeatmapEnabled);
-      onCoverageHeatmapChange(prefs.coverageHeatmapEnabled);
-    }
-    if (prefs.airportMarkersEnabled !== undefined) {
-      setAirportMarkersEnabled(prefs.airportMarkersEnabled);
-      onAirportMarkersChange(prefs.airportMarkersEnabled);
-    }
-  }, [onCoverageHeatmapChange, onAirportMarkersChange]);
+    // Wrap callback props in startTransition to mark them as non-urgent updates
+    // This prevents parent re-renders from blocking the initial mount
+    startTransition(() => {
+      if (prefs.coverageHeatmapEnabled !== undefined) {
+        setCoverageHeatmapEnabled(prefs.coverageHeatmapEnabled);
+        onCoverageHeatmapChange(prefs.coverageHeatmapEnabled);
+      }
+      if (prefs.airportMarkersEnabled !== undefined) {
+        setAirportMarkersEnabled(prefs.airportMarkersEnabled);
+        onAirportMarkersChange(prefs.airportMarkersEnabled);
+      }
+      if (prefs.allTrailsEnabled !== undefined) {
+        setAllTrailsEnabled(prefs.allTrailsEnabled);
+        onAllTrailsChange(prefs.allTrailsEnabled);
+      }
+    });
+  }, [onCoverageHeatmapChange, onAirportMarkersChange, onAllTrailsChange]);
 
   // Update range rings center when settings change
   useEffect(() => {
@@ -223,8 +234,9 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAir
       myLocation,
       coverageHeatmapEnabled,
       airportMarkersEnabled,
+      allTrailsEnabled,
     });
-  }, [rangeRingsEnabled, centerSource, myLocation, coverageHeatmapEnabled, airportMarkersEnabled]);
+  }, [rangeRingsEnabled, centerSource, myLocation, coverageHeatmapEnabled, airportMarkersEnabled, allTrailsEnabled]);
 
   const handleGetLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -295,6 +307,11 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAir
     onAirportMarkersChange(checked);
   }, [onAirportMarkersChange]);
 
+  const handleToggleAllTrails = useCallback((checked: boolean) => {
+    setAllTrailsEnabled(checked);
+    onAllTrailsChange(checked);
+  }, [onAllTrailsChange]);
+
   const topPosition = 16 + offsetTop; // 16px = top-4
 
   return (
@@ -360,6 +377,30 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAir
                 onCheckedChange={handleToggleAirportMarkers}
                 aria-label="Toggle airport markers"
               />
+            </div>
+
+            {/* All Aircraft Trails Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Route className="w-4 h-4 text-purple-400" />
+                <span className="text-sm text-gray-200">All Aircraft Trails</span>
+              </div>
+              <Switch
+                checked={allTrailsEnabled}
+                onCheckedChange={handleToggleAllTrails}
+                aria-label="Toggle all aircraft trails"
+                aria-describedby="all-trails-description"
+              />
+            </div>
+
+            {/* All trails info text - always in DOM for screen reader accessibility */}
+            <div
+              id="all-trails-description"
+              className={`text-xs leading-relaxed pl-6 ${
+                allTrailsEnabled ? "text-gray-500" : "sr-only"
+              }`}
+            >
+              Shows short trail segments (last 2 minutes) for all visible aircraft. May impact performance with many aircraft.
             </div>
 
             {/* Divider */}
@@ -483,14 +524,15 @@ interface MapStyleSectionProps {
   onMapStyleChange: (style: MapStyleKey) => void;
 }
 
-function MapStyleSection({ mapStyleKey, onMapStyleChange }: MapStyleSectionProps) {
-  const styles: { key: MapStyleKey; label: string; icon: typeof MapIcon }[] = [
-    { key: "streets", label: "Streets", icon: MapIcon },
-    { key: "satellite", label: "Satellite", icon: Satellite },
-    { key: "dark", label: "Dark", icon: Moon },
-    { key: "light", label: "Light", icon: Sun },
-  ];
+// Hoisted outside component to avoid recreation on every render
+const MAP_STYLES: { key: MapStyleKey; label: string; icon: typeof MapIcon }[] = [
+  { key: "streets", label: "Streets", icon: MapIcon },
+  { key: "satellite", label: "Satellite", icon: Satellite },
+  { key: "dark", label: "Dark", icon: Moon },
+  { key: "light", label: "Light", icon: Sun },
+];
 
+function MapStyleSection({ mapStyleKey, onMapStyleChange }: MapStyleSectionProps) {
   return (
     <div className="p-4 border-t border-gray-700 space-y-3">
       <div className="flex items-center gap-2">
@@ -500,7 +542,7 @@ function MapStyleSection({ mapStyleKey, onMapStyleChange }: MapStyleSectionProps
 
       {/* 2x2 grid of style buttons */}
       <div className="grid grid-cols-2 gap-2">
-        {styles.map(({ key, label, icon: Icon }) => (
+        {MAP_STYLES.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => onMapStyleChange(key)}

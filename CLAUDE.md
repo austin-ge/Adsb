@@ -84,55 +84,88 @@ UI components should comply with the **Web Interface Guidelines** skill (`/web-d
 
 All work happens on `develop` branch (or feature branches off it).
 
-### Pipeline
-1. **Branch** — Create feature branch from `develop` (or work directly on `develop`)
-2. **Implement** — Use custom agents for domain-specific work
-3. **Validate** — Run `npm run build && npm run lint` (must pass)
-4. **Docs** — Update CHANGELOG.md with changes
-5. **Commit** — Commit to `develop`, PR to `main` when ready for production
+### Three-Layer System
 
-### Custom Agents (`.claude/agents/`)
+Claude uses a three-layer system optimized for context efficiency:
 
-Specialized instruction sets for different domains. See **[docs/AGENTS.md](docs/AGENTS.md)** for full documentation including frontmatter schema, when to use custom agents vs Task subagents, and how to create new agents.
+| Layer | What | Context Impact | Examples |
+|-------|------|----------------|----------|
+| **Skills** | Capabilities & knowledge | Loaded on demand | `agent-browser`, `vercel-react-best-practices` |
+| **Review Agents** | Project-specific validation | Uses main context (worth it for quality) | `code-reviewer`, `browser-tester`, `test-runner` |
+| **Task Subagents** | Generic workers | Saves main context (runs in subprocess) | `api-developer`, `Explore`, `Bash` |
 
-**Domain Agents:**
-- `api-developer` — API routes, database queries, backend logic
-- `map-developer` — Mapbox GL, aircraft rendering, map features
-- `ui-designer` — Pages, layouts, components, Tailwind styling
-- `auth-developer` — Better Auth, sessions, permissions
-- `db-migrator` — Prisma schema changes, migrations
+### Implementation → Review Pipeline
 
-**Supporting Agents:**
-- `code-reviewer` — Review code for perf, a11y, security issues
-- `test-runner` — Run build/lint/type checks
-- `docs-updater` — Update CHANGELOG, SPEC, CLAUDE.md
-- `docker-ops` — Aggregator container management
-- `api-tester` — curl-based endpoint verification
-- `dependency-auditor` — Check for outdated/vulnerable packages
-- `git-workflow` — Branch management and PR preparation
-
-**How to invoke:**
 ```
-"Use the api-developer agent to implement the search endpoint"
-"Have the code-reviewer agent check my changes"
-"Use the map-developer agent to add range rings"
+You: "Add a flight search endpoint"
+         ↓
+Task subagent implements it (saves context)
+         ↓
+code-reviewer agent checks it (uses skills, knows project rules)
+         ↓
+browser-tester agent validates it works (uses agent-browser skill)
+         ↓
+test-runner agent confirms build passes
+         ↓
+Commit
 ```
 
-Claude reads the agent's instructions from `.claude/agents/[name].md` and follows that specialized context.
+**Why this works:**
+- Implementation is context-heavy but generic patterns work fine → use Task subagents
+- Review needs project-specific knowledge → use custom agents (worth the context)
+- Skills provide specialized capabilities to both layers
+
+### Skills (`~/.claude/skills/`)
+
+Installed capabilities that enhance agents:
+
+| Skill | Provides | Used By |
+|-------|----------|---------|
+| `agent-browser` | Browser automation commands | `browser-tester` agent |
+| `vercel-react-best-practices` | React/Next.js performance patterns | `code-reviewer` agent |
+| `web-design-guidelines` | Accessibility & UX standards | `code-reviewer` agent |
+
+Invoke skills directly for one-off checks: `/web-design-guidelines`, `/vercel-react-best-practices`
+
+### Review Agents (`.claude/agents/`)
+
+Project-specific validation agents that run in main context. Worth the context cost because they enforce project standards.
+
+| Agent | Purpose | Skills Used |
+|-------|---------|-------------|
+| `code-reviewer` | Performance, accessibility, security | `vercel-react-best-practices`, `web-design-guidelines` |
+| `browser-tester` | Visual testing, interactions, console errors | `agent-browser` |
+| `test-runner` | Build, lint, type checks | — |
+| `docs-updater` | Update CHANGELOG, SPEC, CLAUDE.md | — |
+| `api-tester` | curl-based endpoint verification | — |
+
+### Task Subagents (Built-in)
+
+Generic workers that run in separate processes. Use these for implementation work to save main context.
+
+| Subagent | Use For |
+|----------|---------|
+| `api-developer` | API routes, backend logic, database |
+| `ui-designer` | Pages, components, styling |
+| `map-developer` | Mapbox, aircraft rendering |
+| `Explore` | Codebase exploration, finding files |
+| `Bash` | Shell commands, git operations |
+
+**How to invoke:** Just describe the task. Claude will use an appropriate subagent automatically.
 
 ### Pre-Commit Checklist
 
-Before committing, run these agents in sequence:
+Before committing, run review agents in sequence:
 1. `test-runner` — Verify build, lint, and types pass
 2. `code-reviewer` — Check for performance, accessibility, security issues
-3. `docs-updater` — Update CHANGELOG.md and other docs
+3. `browser-tester` — Validate UI works in real browser (if UI changed)
+4. `docs-updater` — Update CHANGELOG.md and other docs
 
-### Task Subagents vs Custom Agents
+### Branch Strategy
 
-- **Custom agents** run in the main conversation with project-specific context — use for domain work
-- **Task subagents** spawn separate processes with generic knowledge — use for parallel tasks, exploration
-
-See [docs/AGENTS.md](docs/AGENTS.md) for detailed comparison and when to use each.
+1. Work on `develop` branch (or feature branches off it)
+2. PR to `main` when ready for production
+3. `main` auto-deploys to production
 
 ## Quick Reference
 

@@ -1,216 +1,218 @@
-# Custom Agents Guide
+# Claude Workflow Guide
 
-This document explains how to use the custom agent system in HangarTrak Radar.
+This document explains the three-layer system for working with Claude on HangarTrak Radar.
 
-## Overview
-
-HangarTrak Radar uses **custom agents** - specialized instruction files that Claude reads and follows for domain-specific work. These are different from Claude Code's built-in Task subagents.
-
-### Two Agent Systems
-
-| System | Location | How it works | Best for |
-|--------|----------|--------------|----------|
-| **Custom Agents** | `.claude/agents/*.md` | Claude reads instructions and follows them in main conversation | Domain work requiring project context |
-| **Task Subagents** | Built-in to Claude Code | Spawns separate process with generic knowledge | Parallel tasks, exploration, simple operations |
-
-## Custom Agents
-
-### Available Agents
-
-**Domain Agents** (for implementation work):
-
-| Agent | Purpose | Tools |
-|-------|---------|-------|
-| `api-developer` | API routes, database queries, backend logic, auth | Bash, Read, Write, Edit, Glob, Grep |
-| `map-developer` | Mapbox GL, aircraft rendering, GeoJSON, playback | Bash, Read, Write, Edit, Glob, Grep |
-| `ui-designer` | Pages, layouts, components, Tailwind styling | Bash, Read, Write, Edit, Glob, Grep |
-| `auth-developer` | Better Auth, sessions, permissions, 2FA | Bash, Read, Write, Edit, Glob, Grep |
-| `db-migrator` | Prisma schema, migrations, indexes | Bash, Read, Edit, Glob, Grep |
-
-**Supporting Agents** (for validation and maintenance):
-
-| Agent | Purpose | Tools |
-|-------|---------|-------|
-| `code-reviewer` | Review for performance, accessibility, security | Read, Glob, Grep |
-| `test-runner` | Validate build, lint, types before commit | Bash, Read, Grep |
-| `docs-updater` | Update CHANGELOG, SPEC, CLAUDE.md | Read, Edit, Glob, Grep |
-| `docker-ops` | Aggregator container management | Bash, Read, Grep |
-| `api-tester` | curl-based endpoint verification | Bash, Read, Grep |
-| `dependency-auditor` | Check outdated/vulnerable packages | Bash, Read, Grep |
-| `git-workflow` | Branch management, PR preparation | Bash, Read, Grep |
-
-### How to Invoke
-
-Ask Claude to use a specific agent:
+## Three-Layer Architecture
 
 ```
-"Use the api-developer agent to implement the search endpoint"
-"Have the code-reviewer agent check my changes"
-"Use the map-developer agent to add clustering"
-"Run the test-runner agent before I commit"
+┌─────────────────────────────────────────────────────────────┐
+│  SKILLS (Capabilities)                                       │
+│  ~/.claude/skills/                                           │
+│  • agent-browser - browser automation                        │
+│  • vercel-react-best-practices - React/Next.js patterns     │
+│  • web-design-guidelines - accessibility & UX                │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  REVIEW AGENTS (Project-Specific Validation)                 │
+│  .claude/agents/*.md                                         │
+│  • Run in main context (uses skills, knows project rules)   │
+│  • Worth the context cost for quality enforcement            │
+│  • code-reviewer, browser-tester, test-runner, etc.         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  TASK SUBAGENTS (Generic Implementation Workers)             │
+│  Built-in to Claude Code                                     │
+│  • Run in subprocess (saves main context)                   │
+│  • Generic knowledge, no project-specific rules             │
+│  • api-developer, ui-designer, Explore, Bash, etc.          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Claude reads `.claude/agents/[name].md` and follows the specialized instructions.
+## Why This Architecture?
 
-### Frontmatter Schema
+**Context is expensive.** Every file read, every code block, every conversation turn uses context. When you run out, Claude loses track of earlier information.
 
-Each agent file has YAML frontmatter:
+**The solution:**
+- **Implementation** (bulky, lots of file I/O) → Run in Task subagents (separate context)
+- **Review** (needs project rules) → Run in main context with custom agents (worth it)
+- **Skills** (specialized knowledge) → Loaded on demand by agents
+
+## Workflow
+
+### Standard Implementation → Review Flow
+
+```
+You: "Add a flight search endpoint"
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Task Subagent: api-developer   │  ← Saves your context
+│  • Explores codebase            │
+│  • Writes implementation        │
+│  • Returns summary              │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Review Agent: code-reviewer    │  ← Uses main context (worth it)
+│  • Reads your project rules     │
+│  • Uses skills for standards    │
+│  • Reports issues               │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Review Agent: browser-tester   │  ← Uses agent-browser skill
+│  • Opens pages in real browser  │
+│  • Takes screenshots            │
+│  • Validates interactions       │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Review Agent: test-runner      │
+│  • Runs build, lint, types      │
+│  • Reports failures             │
+└─────────────────────────────────┘
+         │
+         ▼
+       Commit
+```
+
+## Skills
+
+Skills are installed capabilities that provide specialized knowledge or tools.
+
+| Skill | Location | Provides |
+|-------|----------|----------|
+| `agent-browser` | `~/.claude/skills/agent-browser` | Browser automation CLI |
+| `vercel-react-best-practices` | `~/.claude/skills/vercel-react-best-practices` | React/Next.js performance patterns |
+| `web-design-guidelines` | `~/.claude/skills/web-design-guidelines` | Accessibility & UX standards |
+
+**Direct invocation:** Use `/skill-name` for one-off checks:
+```
+/web-design-guidelines    # Audit UI component
+/vercel-react-best-practices  # Review React code
+```
+
+**Agent usage:** Skills are referenced in agent frontmatter:
+```yaml
+skills: vercel-react-best-practices, web-design-guidelines
+```
+
+## Review Agents
+
+Review agents run in the main conversation with full project context. They're defined in `.claude/agents/*.md`.
+
+| Agent | Purpose | Skills Used |
+|-------|---------|-------------|
+| `code-reviewer` | Performance, accessibility, security review | `vercel-react-best-practices`, `web-design-guidelines` |
+| `browser-tester` | Visual testing, interactions, console errors | `agent-browser` |
+| `test-runner` | Build, lint, type validation | — |
+| `docs-updater` | Update CHANGELOG, SPEC, CLAUDE.md | — |
+| `api-tester` | curl-based endpoint verification | — |
+| `dependency-auditor` | Check outdated/vulnerable packages | — |
+
+### Agent File Structure
 
 ```yaml
 ---
 name: agent-name
-description: One-line description shown in CLAUDE.md
-tools: Bash, Read, Write, Edit, Glob, Grep  # Allowed tools
-model: inherit  # or "haiku" for simpler tasks
-skills: skill-1, skill-2  # Skills to apply (optional)
+description: One-line description
+tools: Bash, Read, Glob, Grep
+skills: skill-1, skill-2
 ---
+
+You are a [role] for HangarTrak Radar.
+
+## What to Check
+- Item 1
+- Item 2
+
+## Reporting Format
+| Column | Column |
+|--------|--------|
+
+## Rules
+1. Do NOT fix issues, just report
+2. Always close browser when done
 ```
-
-**Fields:**
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Agent identifier (matches filename) |
-| `description` | Yes | Brief description for documentation |
-| `tools` | Yes | Comma-separated list of allowed tools |
-| `model` | No | `inherit` (default) or `haiku` for simple tasks |
-| `skills` | No | Skills to apply (e.g., `vercel-react-best-practices`) |
-
-### Agent Content Structure
-
-After frontmatter, include:
-
-1. **Role statement** - "You are a [role] for HangarTrak Radar..."
-2. **Domain section** - Key files and areas of responsibility
-3. **Technical context** - Patterns, integrations, dependencies
-4. **Critical rules** - Security, performance, or quality requirements
-5. **Reporting format** - How to report results (tables, file:line refs)
-6. **When done** - What to do after completing work
 
 ## Task Subagents
 
-Use the Task tool for operations that benefit from parallelization or don't need project-specific context.
+Task subagents are built into Claude Code. They run in separate processes with their own context, saving your main conversation context.
 
-### When to Use Task Subagents
+| Subagent | Use For |
+|----------|---------|
+| `api-developer` | API routes, backend logic, database queries |
+| `ui-designer` | Pages, components, Tailwind styling |
+| `map-developer` | Mapbox GL, aircraft rendering, GeoJSON |
+| `auth-developer` | Better Auth, sessions, permissions |
+| `db-migrator` | Prisma schema, migrations |
+| `Explore` | Finding files, understanding codebase |
+| `Bash` | Shell commands, git operations |
 
-| Use Case | Subagent Type |
-|----------|---------------|
-| Explore codebase, find files | `Explore` |
-| Git operations | `git-workflow` |
-| Run shell commands | `Bash` |
-| Research questions | `general-purpose` |
-| Run multiple checks in parallel | Multiple Tasks |
-
-### Example: Parallel Validation
-
+**Invocation:** Just describe what you need. Claude automatically picks the right subagent:
 ```
-"Run the test-runner and code-reviewer agents in parallel"
-```
-
-This spawns two Task subagents that run simultaneously.
-
-**Note:** Task subagents do NOT read `.claude/agents/` files. They have generic knowledge only. For domain work, use custom agents in the main conversation.
-
-## Workflow: When to Use What
-
-### Implementation Work
-
-Use **custom agents** in the main conversation:
-
-```
-User: "Add a new API endpoint for flight search"
-Claude: [Reads .claude/agents/api-developer.md]
-        [Follows security rules, patterns, file locations]
-        [Implements with project-specific context]
+"Add an API endpoint for flight search"  → api-developer subagent
+"Find where auth is configured"          → Explore subagent
+"Build a new settings page"              → ui-designer subagent
 ```
 
-### Validation Work
+## Pre-Commit Checklist
 
-Use **custom agents** for thorough review:
+Run these review agents before committing:
 
-```
-User: "Review my changes for issues"
-Claude: [Reads .claude/agents/code-reviewer.md]
-        [Checks performance, accessibility, security]
-        [Reports in table format with file:line refs]
-```
+1. **test-runner** — Build, lint, types must pass
+2. **code-reviewer** — Performance, accessibility, security
+3. **browser-tester** — Visual validation (if UI changed)
+4. **docs-updater** — Update CHANGELOG.md
 
-### Exploration
+## When to Use What
 
-Use **Task subagent** for speed:
+| Task Type | Use | Why |
+|-----------|-----|-----|
+| Implement new feature | Task subagent | Saves context |
+| Fix a bug | Task subagent | Saves context |
+| Review code quality | Review agent | Needs project rules |
+| Test in browser | Review agent | Uses agent-browser skill |
+| Validate build | Review agent | Quick, needs project config |
+| Explore codebase | Task subagent (Explore) | Saves context |
+| Update docs | Review agent | Needs to know what changed |
 
-```
-User: "Where is authentication handled?"
-Claude: [Task tool with Explore subagent]
-        [Returns quickly with file locations]
-```
+## Creating New Review Agents
 
-### Pre-Commit Checklist
+1. Create `.claude/agents/my-agent.md`
+2. Add frontmatter (name, description, tools, skills)
+3. Write instructions (role, what to check, reporting format, rules)
+4. Update CLAUDE.md to document it
 
-Recommended workflow before committing:
-
-1. `test-runner` agent - Verify build/lint/types pass
-2. `code-reviewer` agent - Check for issues
-3. `docs-updater` agent - Update CHANGELOG and docs
-
-## Creating New Agents
-
-### Template
-
+**Template:**
 ```markdown
 ---
 name: my-agent
-description: Brief description for CLAUDE.md
-tools: Bash, Read, Write, Edit, Glob, Grep
-model: inherit
-skills: relevant-skill-1
+description: Brief description
+tools: Bash, Read, Glob, Grep
+skills: relevant-skill
 ---
 
-You are a [role] for the HangarTrak Radar project at /home/austingeorge/developer/adsb.
+You are a [role] for HangarTrak Radar at /Users/austingeorge/Developer/Adsb.
 
-## Your Domain
+## What to Check
+- Check item 1
+- Check item 2
 
-You work on [area]. Key files:
+## Reporting Format
+Report as a table with columns: Severity, File, Issue, Fix
 
-- `path/to/files` - Description
-- `another/path` - Description
-
-## Technical Context
-
-- **Technology** - How it's used
-- **Patterns** - Common patterns in this domain
-
-## Critical Rules
-
-1. Rule one (why it matters)
-2. Rule two (why it matters)
-
-## When Done
-
-Report what you did with file:line references.
+## Rules
+1. Do NOT fix issues, just report
+2. Rule 2
 ```
-
-### Guidelines
-
-1. **Be specific** - Include exact file paths, not general patterns
-2. **Add guardrails** - Security rules, performance constraints
-3. **Define output** - Specify reporting format
-4. **Limit scope** - Each agent should have a clear domain
-5. **Update CLAUDE.md** - Add new agents to the Custom Agents section
-
-## Troubleshooting
-
-### "Agent didn't follow my custom rules"
-
-Ensure you asked Claude to use the agent explicitly. Generic requests won't trigger agent instructions.
-
-### "Task subagent didn't use project context"
-
-Task subagents don't read `.claude/agents/` files. Use custom agents for project-specific work, or include context directly in the Task prompt.
-
-### "Agent used tools not in its allowed list"
-
-The `tools` field in frontmatter is documentation/intent only - Claude Code doesn't enforce it automatically. It serves as guidance for the agent role.
 
 ---
 

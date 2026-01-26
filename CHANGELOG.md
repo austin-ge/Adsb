@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `browser-tester` review agent for visual testing with screenshots, interaction checks, and console error detection (uses `agent-browser` skill)
+- Three-layer Claude workflow: Skills → Review Agents → Task Subagents (optimized for context efficiency)
+- Installed `agent-browser` CLI globally for browser automation
+- **All Aircraft Trails** layer: toggleable option in Map Layers panel showing 2-minute trail segments for all visible aircraft
+
+### Fixed
+- Hoisted empty GeoJSON FeatureCollection as module-level constant to avoid object allocation on every render when trails disabled
+- Replaced O(n) reverse iteration with O(log n) binary search for finding trail start index (significant perf improvement with many aircraft)
+
+### Changed
+- Restructured agent system: Task subagents now handle implementation (saves context), review agents handle validation (project-specific rules)
+- Archived domain agents (`api-developer`, `auth-developer`, `db-migrator`, `map-developer`, `ui-designer`) to `.claude/agents/archived/` - replaced by built-in Task subagents
+- Updated `CLAUDE.md` and `docs/AGENTS.md` with new three-layer workflow documentation
+
+### Added
 - Dark/light mode toggle with system preference support (Light/Dark/Auto in Layers panel)
 - Receiver coverage heatmap layer showing historical position density
 - Metric/imperial units toggle with conversions for altitude (ft/m), speed (kts/km/h), and distance (nm/km)

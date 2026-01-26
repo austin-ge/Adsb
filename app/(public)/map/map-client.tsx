@@ -83,6 +83,30 @@ const MAX_TRAIL_POINTS = 10000; // Keep full flight path
 const PLAYBACK_MAX_TRAIL_POINTS = 2000; // Reduced limit during playback to prevent memory issues
 const TRAIL_MAX_AGE_MS = 60 * 60 * 1000; // Clean up after 1 hour of no updates
 
+// Module-level constant for empty GeoJSON to avoid re-creating on every render
+const EMPTY_FEATURE_COLLECTION: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+/**
+ * Binary search to find the first index in a sorted trail array where timestamp >= targetTime.
+ * Returns trail.length if all timestamps are before targetTime.
+ */
+function findTrailStartIndex(trail: TrailPoint[], targetTime: number): number {
+  let low = 0;
+  let high = trail.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (trail[mid].timestamp < targetTime) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
 export default function MapPage() {
   const mapRef = useRef<MapRef>(null);
   const searchParams = useSearchParams();
@@ -154,6 +178,8 @@ export default function MapPage() {
   const playbackAircraftRef = useRef<Aircraft[]>([]);
   const playbackStateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trailVersionRef = useRef(0);
+  // Track previous aircraft hex set for optimized trail cleanup
+  const prevAircraftHexesRef = useRef<Set<string>>(new Set());
 
   // Flight replay state (for individual flight playback from search)
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
@@ -169,6 +195,9 @@ export default function MapPage() {
 
   // Airport markers state
   const [airportMarkersEnabled, setAirportMarkersEnabled] = useState(false);
+
+  // All aircraft trails state
+  const [allTrailsEnabled, setAllTrailsEnabled] = useState(false);
 
   // Initialize selectedHex from URL on mount (only once)
   useEffect(() => {
@@ -252,10 +281,10 @@ export default function MapPage() {
     if (!aircraftData) return;
     const now = Date.now();
     const trails = trailsRef.current;
-    const seenHexes = new Set<string>();
+    const currentHexes = new Set<string>();
 
     for (const ac of aircraftData.aircraft) {
-      seenHexes.add(ac.hex);
+      currentHexes.add(ac.hex);
       const trail = trails.get(ac.hex) || [];
       const lastPoint = trail[trail.length - 1];
 
@@ -279,17 +308,25 @@ export default function MapPage() {
       }
     }
 
-    for (const hex of trails.keys()) {
-      if (!seenHexes.has(hex)) {
-        const trail = trails.get(hex)!;
-        if (
-          trail.length === 0 ||
-          now - trail[trail.length - 1].timestamp > TRAIL_MAX_AGE_MS
-        ) {
-          trails.delete(hex);
+    // Only run cleanup when aircraft have disappeared (compare with previous set)
+    const prevHexes = prevAircraftHexesRef.current;
+    if (prevHexes.size > 0 && (trails.size > currentHexes.size || prevHexes.size > currentHexes.size)) {
+      // Find hexes that were in previous set but not in current (disappeared aircraft)
+      for (const hex of prevHexes) {
+        if (!currentHexes.has(hex) && trails.has(hex)) {
+          const trail = trails.get(hex)!;
+          if (
+            trail.length === 0 ||
+            now - trail[trail.length - 1].timestamp > TRAIL_MAX_AGE_MS
+          ) {
+            trails.delete(hex);
+          }
         }
       }
     }
+
+    // Update previous hexes ref for next comparison
+    prevAircraftHexesRef.current = currentHexes;
   }, [aircraftData]);
 
   // Build GeoJSON for emergency aircraft pulse rings (moved above pulse animation)
@@ -463,6 +500,57 @@ export default function MapPage() {
     // It only increments when a new trail point is actually added (see handlePlaybackUpdate).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHex, aircraft, isPlaybackMode, trailVersionRef.current]);
+
+  // Build GeoJSON for all aircraft trails (short 2-minute segments, excluding selected aircraft)
+  // Only computed when allTrailsEnabled is true; returns module-level constant when disabled
+  // to avoid creating new objects on every aircraft update.
+  const allTrailsGeojson = useMemo(() => {
+    // Disabled or in playback mode - return shared empty constant (no allocation)
+    if (!allTrailsEnabled || isPlaybackMode) {
+      return EMPTY_FEATURE_COLLECTION;
+    }
+
+    const now = Date.now();
+    const cutoffTime = now - 2 * 60 * 1000; // 2 minutes ago
+    const trails = trailsRef.current;
+    const features: GeoJSON.Feature[] = [];
+
+    for (const [hex, trail] of trails.entries()) {
+      // Skip the selected aircraft - it has its own longer trail
+      if (hex === selectedHex) continue;
+      if (trail.length < 2) continue;
+
+      // Binary search to find the first point within the time window (O(log n) instead of O(n))
+      const startIdx = findTrailStartIndex(trail, cutoffTime);
+      if (startIdx >= trail.length - 1) continue; // No recent points
+
+      // Create line segments for the recent portion
+      for (let i = startIdx; i < trail.length - 1; i++) {
+        const from = trail[i];
+        const to = trail[i + 1];
+        features.push({
+          type: "Feature",
+          properties: {
+            color: getAltitudeColor(to.altitude),
+          },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [from.lon, from.lat],
+              [to.lon, to.lat],
+            ],
+          },
+        });
+      }
+    }
+
+    return {
+      type: "FeatureCollection" as const,
+      features,
+    };
+    // `aircraft` triggers recomputation when data updates, even though we read from trailsRef.current
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTrailsEnabled, selectedHex, aircraft, isPlaybackMode]);
 
   const selectedAircraft = useMemo(
     () => aircraft.find((a) => a.hex === selectedHex),
@@ -713,6 +801,11 @@ export default function MapPage() {
     setAirportMarkersEnabled(enabled);
   }, []);
 
+  // Handle all trails toggle from map controls
+  const handleAllTrailsChange = useCallback((enabled: boolean) => {
+    setAllTrailsEnabled(enabled);
+  }, []);
+
   // Handle map style change from map controls
   const handleMapStyleChange = useCallback((style: MapStyleKey) => {
     setMapStyleKey(style);
@@ -785,6 +878,25 @@ export default function MapPage() {
 
         {/* Range rings layer - rendered below aircraft */}
         <RangeRings center={rangeRingsCenter} visible={rangeRingsCenter !== null} />
+
+        {/* All aircraft trails - short 2-minute segments */}
+        {/* Always render Source/Layer but control visibility via layout property to avoid destroying/recreating Mapbox source */}
+        <Source id="all-trails" type="geojson" data={allTrailsGeojson}>
+          <Layer
+            id="all-trails-line"
+            type="line"
+            layout={{
+              "line-cap": "round",
+              "line-join": "round",
+              visibility: allTrailsEnabled ? "visible" : "none",
+            }}
+            paint={{
+              "line-color": ["get", "color"],
+              "line-width": 1.5,
+              "line-opacity": 0.5,
+            }}
+          />
+        </Source>
 
         {/* Flight trail for selected aircraft */}
         <Source id="trail" type="geojson" data={trailGeojson}>
@@ -916,6 +1028,7 @@ export default function MapPage() {
         onRangeRingsChange={handleRangeRingsChange}
         onCoverageHeatmapChange={handleCoverageHeatmapChange}
         onAirportMarkersChange={handleAirportMarkersChange}
+        onAllTrailsChange={handleAllTrailsChange}
         mapStyleKey={mapStyleKey}
         onMapStyleChange={handleMapStyleChange}
         offsetTop={selectedAircraft ? 300 : 0}
