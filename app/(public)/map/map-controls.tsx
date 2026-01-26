@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useTheme } from "next-themes";
-import { Layers, MapPin, Radio, X, Loader2, Sun, Moon, Monitor, Ruler, Flame } from "lucide-react";
+import { Layers, MapPin, Radio, X, Loader2, Sun, Moon, Monitor, Ruler, Flame, Plane, Map as MapIcon, Satellite } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { Switch } from "@/components/ui/switch";
 import { fetcher } from "@/lib/fetcher";
@@ -21,10 +21,15 @@ type CenterSource = "my-location" | `feeder-${string}`;
 
 type MapTheme = "dark" | "light" | "system";
 
+type MapStyleKey = "streets" | "satellite" | "dark" | "light";
+
 interface MapControlsProps {
   onRangeRingsChange: (center: { lat: number; lng: number } | null) => void;
   onCoverageHeatmapChange: (enabled: boolean) => void;
+  onAirportMarkersChange: (enabled: boolean) => void;
   onThemeChange?: (theme: MapTheme) => void;
+  mapStyleKey: MapStyleKey;
+  onMapStyleChange: (style: MapStyleKey) => void;
   offsetTop?: number;
 }
 
@@ -35,6 +40,7 @@ interface StoredPreferences {
   centerSource: CenterSource;
   myLocation: { lat: number; lng: number } | null;
   coverageHeatmapEnabled: boolean;
+  airportMarkersEnabled: boolean;
 }
 
 function loadPreferences(): Partial<StoredPreferences> {
@@ -125,7 +131,7 @@ function UnitsSection() {
   );
 }
 
-export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThemeChange, offsetTop = 0 }: MapControlsProps) {
+export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onAirportMarkersChange, onThemeChange, mapStyleKey, onMapStyleChange, offsetTop = 0 }: MapControlsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [rangeRingsEnabled, setRangeRingsEnabled] = useState(false);
   const [centerSource, setCenterSource] = useState<CenterSource>("my-location");
@@ -134,6 +140,7 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
   const [locationError, setLocationError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [coverageHeatmapEnabled, setCoverageHeatmapEnabled] = useState(false);
+  const [airportMarkersEnabled, setAirportMarkersEnabled] = useState(false);
 
   // Theme management
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -182,7 +189,11 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
       setCoverageHeatmapEnabled(prefs.coverageHeatmapEnabled);
       onCoverageHeatmapChange(prefs.coverageHeatmapEnabled);
     }
-  }, [onCoverageHeatmapChange]);
+    if (prefs.airportMarkersEnabled !== undefined) {
+      setAirportMarkersEnabled(prefs.airportMarkersEnabled);
+      onAirportMarkersChange(prefs.airportMarkersEnabled);
+    }
+  }, [onCoverageHeatmapChange, onAirportMarkersChange]);
 
   // Update range rings center when settings change
   useEffect(() => {
@@ -211,8 +222,9 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
       centerSource,
       myLocation,
       coverageHeatmapEnabled,
+      airportMarkersEnabled,
     });
-  }, [rangeRingsEnabled, centerSource, myLocation, coverageHeatmapEnabled]);
+  }, [rangeRingsEnabled, centerSource, myLocation, coverageHeatmapEnabled, airportMarkersEnabled]);
 
   const handleGetLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -278,6 +290,11 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
     onCoverageHeatmapChange(checked);
   }, [onCoverageHeatmapChange]);
 
+  const handleToggleAirportMarkers = useCallback((checked: boolean) => {
+    setAirportMarkersEnabled(checked);
+    onAirportMarkersChange(checked);
+  }, [onAirportMarkersChange]);
+
   const topPosition = 16 + offsetTop; // 16px = top-4
 
   return (
@@ -331,6 +348,19 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
                 Shows density of received aircraft positions over the last 24 hours. Brighter areas indicate better coverage.
               </div>
             )}
+
+            {/* Airport Markers Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Plane className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm text-gray-200">Airport Markers</span>
+              </div>
+              <Switch
+                checked={airportMarkersEnabled}
+                onCheckedChange={handleToggleAirportMarkers}
+                aria-label="Toggle airport markers"
+              />
+            </div>
 
             {/* Divider */}
             <div className="border-t border-gray-700" />
@@ -437,10 +467,56 @@ export function MapControls({ onRangeRingsChange, onCoverageHeatmapChange, onThe
           {/* Units Section */}
           <UnitsSection />
 
+          {/* Map Style Section */}
+          <MapStyleSection mapStyleKey={mapStyleKey} onMapStyleChange={onMapStyleChange} />
+
           {/* Theme Section */}
           <ThemeSection mounted={mounted} theme={theme} setTheme={setTheme} resolvedTheme={resolvedTheme} />
         </div>
       )}
+    </div>
+  );
+}
+
+interface MapStyleSectionProps {
+  mapStyleKey: MapStyleKey;
+  onMapStyleChange: (style: MapStyleKey) => void;
+}
+
+function MapStyleSection({ mapStyleKey, onMapStyleChange }: MapStyleSectionProps) {
+  const styles: { key: MapStyleKey; label: string; icon: typeof MapIcon }[] = [
+    { key: "streets", label: "Streets", icon: MapIcon },
+    { key: "satellite", label: "Satellite", icon: Satellite },
+    { key: "dark", label: "Dark", icon: Moon },
+    { key: "light", label: "Light", icon: Sun },
+  ];
+
+  return (
+    <div className="p-4 border-t border-gray-700 space-y-3">
+      <div className="flex items-center gap-2">
+        <MapIcon className="w-4 h-4 text-emerald-400" />
+        <span className="text-sm text-gray-200">Map Style</span>
+      </div>
+
+      {/* 2x2 grid of style buttons */}
+      <div className="grid grid-cols-2 gap-2">
+        {styles.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => onMapStyleChange(key)}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+              mapStyleKey === key
+                ? "bg-emerald-600 text-white"
+                : "bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700 border border-gray-600"
+            }`}
+            aria-pressed={mapStyleKey === key}
+            aria-label={`${label} map style`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

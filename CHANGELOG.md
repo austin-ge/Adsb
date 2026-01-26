@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Aircraft type icons on the live map: distinct silhouettes for jets (A3-A6), turboprops (A2), helicopters (A7), light aircraft (A1/B1/B4), and a generic fallback for unknown categories. Icons rotate based on aircraft heading and are colored by altitude using Mapbox SDF rendering.
 - Category-to-icon mapping from ICAO ADS-B emitter category codes with data-driven Mapbox expressions for per-aircraft icon selection
 - Icons scale dynamically for selected and emergency aircraft states
+- Airport markers layer showing major airports with ICAO codes on the map (toggleable via Map Layers panel)
+- Map style selector with 4 options: Streets, Satellite, Dark, Light (independent from UI theme)
+- New airport data file at `public/data/airports.json` with 139 major airports worldwide
 
 ### Security
 - Auth bypass fixed on internal history-snapshot endpoint: requires `INTERNAL_CRON_SECRET` in production
@@ -51,3 +54,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Playback controls: added `role="group"`, `aria-label`, `aria-valuetext` on slider
 - PLAYBACK indicator: added `role="status"` and `aria-live="polite"`
 - Focus-visible styles on range input and duration buttons for keyboard navigation
+- Map style is now independent from UI theme - users can choose any map style regardless of light/dark mode
+- Map Layers panel reorganized: added Map Style section between Units and Theme sections

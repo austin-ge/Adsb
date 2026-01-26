@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import MapGL, { Layer, Source, MapRef, MapMouseEvent, ViewStateChangeEvent } from "react-map-gl/mapbox";
 import mapboxgl from "mapbox-gl";
@@ -16,11 +15,17 @@ import {
 } from "./types";
 import { useUnits, getAltitudeRanges } from "@/lib/units";
 
-// Mapbox styles for light and dark themes
+// Mapbox styles - map style is independent from UI theme
 const MAPBOX_STYLES = {
+  streets: "mapbox://styles/mapbox/streets-v12",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
   dark: "mapbox://styles/mapbox/dark-v11",
   light: "mapbox://styles/mapbox/light-v11",
 } as const;
+
+type MapStyleKey = keyof typeof MAPBOX_STYLES;
+
+const MAP_STYLE_STORAGE_KEY = "hangartrak-map-style";
 import {
   AIRCRAFT_ICON_TYPES,
   getIconImageName,
@@ -33,6 +38,7 @@ import { FlightChart, FlightPosition } from "./flight-chart";
 import { RangeRings } from "./range-rings";
 import { MapControls } from "./map-controls";
 import { CoverageHeatmap } from "./coverage-heatmap";
+import { AirportMarkers } from "./airport-markers";
 
 function buildAircraftGeojson(aircraft: Aircraft[]) {
   return {
@@ -80,31 +86,56 @@ const TRAIL_MAX_AGE_MS = 60 * 60 * 1000; // Clean up after 1 hour of no updates
 export default function MapPage() {
   const mapRef = useRef<MapRef>(null);
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Units context for formatting
   const { units, formatAltitude, formatSpeed, formatVerticalRate } = useUnits();
 
-  // Theme management for map style
-  const { resolvedTheme } = useTheme();
+  // Mount state for client-side hydration
   const [mounted, setMounted] = useState(false);
+
+  // Map style state (independent from UI theme) - must be declared before mapStyle useMemo
+  const [mapStyleKey, setMapStyleKey] = useState<MapStyleKey>(() => {
+    if (typeof window === "undefined") return "dark";
+    try {
+      const stored = localStorage.getItem(MAP_STYLE_STORAGE_KEY);
+      if (stored && stored in MAPBOX_STYLES) {
+        return stored as MapStyleKey;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return "dark";
+  });
 
   // Track mount state to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Get the appropriate map style based on theme
+  // Get the appropriate map style based on mapStyleKey (independent from UI theme)
   const mapStyle = useMemo(() => {
     if (!mounted) return MAPBOX_STYLES.dark; // Default during SSR
-    return resolvedTheme === "light" ? MAPBOX_STYLES.light : MAPBOX_STYLES.dark;
-  }, [mounted, resolvedTheme]);
+    return MAPBOX_STYLES[mapStyleKey];
+  }, [mounted, mapStyleKey]);
+
+  // Persist map style to localStorage
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      localStorage.setItem(MAP_STYLE_STORAGE_KEY, mapStyleKey);
+    } catch {
+      // Ignore storage errors
+    }
+  }, [mounted, mapStyleKey]);
+
+  // Determine if map style is light (for label colors)
+  const isLightMapStyle = mapStyleKey === "light" || mapStyleKey === "streets";
 
   // Text colors that work on both light and dark map styles
-  const labelTextColor = resolvedTheme === "light" ? "#1e293b" : "#e2e8f0";
-  const labelHaloColor = resolvedTheme === "light" ? "#ffffff" : "#0f172a";
+  const labelTextColor = isLightMapStyle ? "#1e293b" : "#e2e8f0";
+  const labelHaloColor = isLightMapStyle ? "#ffffff" : "#0f172a";
 
   // Track whether we have initialized from URL (prevents re-centering on every data update)
   const initializedFromUrlRef = useRef(false);
@@ -136,6 +167,9 @@ export default function MapPage() {
   // Coverage heatmap state
   const [coverageHeatmapEnabled, setCoverageHeatmapEnabled] = useState(false);
 
+  // Airport markers state
+  const [airportMarkersEnabled, setAirportMarkersEnabled] = useState(false);
+
   // Initialize selectedHex from URL on mount (only once)
   useEffect(() => {
     if (initializedFromUrlRef.current) return;
@@ -148,20 +182,21 @@ export default function MapPage() {
     initializedFromUrlRef.current = true;
   }, [searchParams]);
 
-  // Sync URL when selectedHex changes (shallow routing, no full page reload)
+  // Sync URL when selectedHex changes (using history API to avoid re-renders)
   useEffect(() => {
     // Skip URL update during initial load from URL param
     if (pendingUrlHexRef.current === selectedHex) return;
 
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(window.location.search);
     if (selectedHex) {
       params.set("aircraft", selectedHex.toUpperCase());
     } else {
       params.delete("aircraft");
     }
     const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
-    router.replace(newUrl, { scroll: false });
-  }, [selectedHex, searchParams, router]);
+    // Use history API directly to avoid triggering Next.js navigation/re-renders
+    window.history.replaceState(null, "", newUrl);
+  }, [selectedHex]);
 
   // Use SWR for aircraft polling with 1-second refresh (paused during playback)
   const { data: aircraftData, isLoading } = useSWR<AircraftResponse>(
@@ -673,6 +708,16 @@ export default function MapPage() {
     setCoverageHeatmapEnabled(enabled);
   }, []);
 
+  // Handle airport markers toggle from map controls
+  const handleAirportMarkersChange = useCallback((enabled: boolean) => {
+    setAirportMarkersEnabled(enabled);
+  }, []);
+
+  // Handle map style change from map controls
+  const handleMapStyleChange = useCallback((style: MapStyleKey) => {
+    setMapStyleKey(style);
+  }, []);
+
   // Handle chart seek - update playback to specific time
   const handleChartSeek = useCallback((time: number) => {
     if (flightPositions.length === 0) return;
@@ -730,6 +775,12 @@ export default function MapPage() {
           points={coveragePoints}
           maxCount={coverageMaxCount}
           visible={coverageHeatmapEnabled}
+        />
+
+        {/* Airport markers layer - rendered below aircraft */}
+        <AirportMarkers
+          visible={airportMarkersEnabled}
+          isLightMap={isLightMapStyle}
         />
 
         {/* Range rings layer - rendered below aircraft */}
@@ -838,7 +889,7 @@ export default function MapPage() {
               paint={{
                 "icon-color": ["get", "color"],
                 "icon-opacity": 1.0,
-                "text-color": resolvedTheme === "light" ? "#0f172a" : "#ffffff",
+                "text-color": isLightMapStyle ? "#0f172a" : "#ffffff",
                 "text-halo-color": labelHaloColor,
                 "text-halo-width": 2,
               }}
@@ -864,6 +915,9 @@ export default function MapPage() {
       <MapControls
         onRangeRingsChange={handleRangeRingsChange}
         onCoverageHeatmapChange={handleCoverageHeatmapChange}
+        onAirportMarkersChange={handleAirportMarkersChange}
+        mapStyleKey={mapStyleKey}
+        onMapStyleChange={handleMapStyleChange}
         offsetTop={selectedAircraft ? 300 : 0}
       />
 
