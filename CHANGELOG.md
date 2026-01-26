@@ -11,17 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Three-layer Claude workflow: Skills → Review Agents → Task Subagents (optimized for context efficiency)
 - Installed `agent-browser` CLI globally for browser automation
 - **All Aircraft Trails** layer: toggleable option in Map Layers panel showing 2-minute trail segments for all visible aircraft
-
-### Fixed
-- Hoisted empty GeoJSON FeatureCollection as module-level constant to avoid object allocation on every render when trails disabled
-- Replaced O(n) reverse iteration with O(log n) binary search for finding trail start index (significant perf improvement with many aircraft)
-
-### Changed
-- Restructured agent system: Task subagents now handle implementation (saves context), review agents handle validation (project-specific rules)
-- Archived domain agents (`api-developer`, `auth-developer`, `db-migrator`, `map-developer`, `ui-designer`) to `.claude/agents/archived/` - replaced by built-in Task subagents
-- Updated `CLAUDE.md` and `docs/AGENTS.md` with new three-layer workflow documentation
-
-### Added
 - Dark/light mode toggle with system preference support (Light/Dark/Auto in Layers panel)
 - Receiver coverage heatmap layer showing historical position density
 - Metric/imperial units toggle with conversions for altitude (ft/m), speed (kts/km/h), and distance (nm/km)
@@ -39,6 +28,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Airport markers layer showing major airports with ICAO codes on the map (toggleable via Map Layers panel)
 - Map style selector with 4 options: Streets, Satellite, Dark, Light (independent from UI theme)
 - New airport data file at `public/data/airports.json` with 139 major airports worldwide
+
+### Fixed
+- Hoisted empty GeoJSON FeatureCollection as module-level constant to avoid object allocation on every render when trails disabled
+- Replaced O(n) reverse iteration with O(log n) binary search for finding trail start index (significant perf improvement with many aircraft)
+- Removed redundant `@@index([timestamp, hex])` from AircraftPosition schema (duplicate of existing composite index)
+- Added `take: 100000` safety limit on map/history query to prevent unbounded result sets
+- Added `from >= to` validation on map/history route to reject invalid time ranges
+- Reduced `PLAYBACK_MAX_TRAIL_POINTS` from 10000 to 2000 in playback mode for better performance
+
+### Changed
+- Restructured agent system: Task subagents now handle implementation (saves context), review agents handle validation (project-specific rules)
+- Archived domain agents (`api-developer`, `auth-developer`, `db-migrator`, `map-developer`, `ui-designer`) to `.claude/agents/archived/` - replaced by built-in Task subagents
+- Updated `CLAUDE.md` and `docs/AGENTS.md` with new three-layer workflow documentation
+- Direct Mapbox source updates during playback bypass React state for 60fps rendering
+- Removed `selectedHex` from GeoJSON `useMemo` dependencies (uses separate Mapbox layer with filter instead)
+- Replaced O(n^2) interpolation lookup with Set-based approach
+- Removed `playbackTime` from `trailGeojson` dependencies (uses version counter ref)
+- Pulse animation for emergencies gated on `emergencyCount > 0` (avoids unnecessary animation frames)
+- Extracted `onToggle` to `useCallback` for stable reference
+- Debounced `handleMoveEnd` callback (500ms) to reduce map event processing
+- Replaced redundant `emergencyCount` memo with `emergencyGeojson.features.length`
+- Throttled playback `setCurrentTime` to ~12-15fps for smoother UI updates
+- Map container: added `role="application"` and `aria-label` for screen reader context
+- Stats overlay: added `role="status"`, `aria-live="polite"`, `aria-atomic` for dynamic updates
+- Playback controls: added `role="group"`, `aria-label`, `aria-valuetext` on slider
+- PLAYBACK indicator: added `role="status"` and `aria-live="polite"`
+- Focus-visible styles on range input and duration buttons for keyboard navigation
+- Map style is now independent from UI theme - users can choose any map style regardless of light/dark mode
+- Map Layers panel reorganized: added Map Style section between Units and Theme sections
 
 ### Security
 - Auth bypass fixed on internal history-snapshot endpoint: requires `INTERNAL_CRON_SECRET` in production

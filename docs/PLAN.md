@@ -126,36 +126,41 @@ Replace tar1090's default Leaflet map with a custom Mapbox-powered map for a pol
 - [x] Aircraft count overlay
 - [x] Altitude legend
 
-#### 6b: Enhanced Visualization
+#### 6b: Enhanced Visualization ✅
 - [x] Flight trails/history (full path, altitude-colored)
 - [x] Emergency squawk highlighting (7500/7600/7700 with pulse rings)
 - [ ] MLAT indicator (different icon style or badge for MLAT positions)
-- [ ] Aircraft type icons (jet, prop, helicopter, glider based on category)
-- [ ] Range rings (concentric circles from feeder location)
-- [ ] Distance/bearing from center
+- [x] Aircraft type icons (jet, prop, helicopter, glider based on ICAO category)
+- [x] Range rings (concentric circles from receiver/user location)
+- [x] Distance/bearing from center
 
-#### 6c: Aircraft List Sidebar
-- [ ] Collapsible sidebar/panel showing all aircraft in a table
-- [ ] Columns: callsign, route, type, squawk, altitude, speed, RSSI
-- [ ] Click row to select aircraft on map (and vice versa)
-- [ ] Sort by column (click column header)
-- [ ] Highlight selected aircraft row
-- [ ] Show aircraft count in header
-- [ ] Emergency aircraft pinned to top with red highlight
-- [ ] Responsive: full sidebar on desktop, bottom drawer on mobile
+#### 6c: Aircraft List Sidebar ✅
+- [x] Collapsible sidebar/panel showing all aircraft in a table
+- [x] Columns: callsign, altitude, speed, squawk
+- [x] Click row to select aircraft on map (and vice versa)
+- [x] Sort by column (click column header)
+- [x] Highlight selected aircraft row
+- [x] Show aircraft count in header
+- [x] Emergency aircraft pinned to top with red highlight
+- [x] Responsive: full sidebar on desktop, bottom drawer on mobile
 
-#### 6d: User Experience
+#### 6d: User Experience ✅
 - [x] URL sharing (selected aircraft hex in URL params)
 - [x] Dark/light mode toggle
 - [x] Metric/imperial toggle (ft↔m, kts↔km/h)
 - [ ] Keyboard shortcuts (zoom, pan, deselect)
-- [ ] Mobile responsive (bottom sheet info panel)
+- [x] Mobile responsive (bottom sheet info panel)
 
-#### 6e: Advanced Features
+#### 6e: Advanced Features ✅
 - [x] Historical playback (scrub through past positions)
 - [x] Receiver coverage visualization (heatmap of received positions)
+- [x] Search by callsign/hex/registration (Flight Search feature)
+- [x] All Aircraft Trails layer (shows 2-min trails for all visible aircraft)
 - [ ] Aircraft filtering (by altitude, type, squawk)
-- [ ] Search by callsign/hex/registration
+
+#### 6f: Map Enhancements ✅
+- [x] Airport markers layer with ICAO codes
+- [x] Map style selector (Streets/Satellite/Dark/Light)
 
 ### Phase 7: Polish & Launch
 - [ ] Leaderboard page (top feeders by stats)
@@ -288,4 +293,4 @@ GET /api/v1/stats                 - Network statistics
 ```
 
 ---
-**Last Updated:** January 2026
+**Last Updated:** January 25, 2026

@@ -216,4 +216,4 @@ Report as a table with columns: Severity, File, Issue, Fix
 
 ---
 
-**Last Updated:** January 25, 2026
+**Last Updated:** January 25, 2026 (Three-Layer Workflow Documented)

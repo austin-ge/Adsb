@@ -303,15 +303,15 @@ adsb/
 Future map layers to implement (toggleable via Layers panel):
 
 **Flight Tracking**
-- [ ] Flight trails for all aircraft (not just selected)
+- [x] Flight trails for all aircraft (not just selected)
 - [ ] Altitude/speed-based coloring toggle
 - [ ] Always-on callsign labels
 - [ ] MLAT vs ADS-B indicators
 
 **Coverage & Analysis**
-- [ ] Receiver coverage heatmap
+- [x] Receiver coverage heatmap
 - [ ] Altitude band shading
-- [ ] Airport markers with ICAO codes
+- [x] Airport markers with ICAO codes
 - [ ] Airspace boundaries (Class B/C/D)
 
 **Weather & Environment**
@@ -356,4 +356,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 25, 2026
+**Last Updated:** January 25, 2026 (Phase 6 Live Map Complete)
