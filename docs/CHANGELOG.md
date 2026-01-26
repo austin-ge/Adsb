@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Development roadmap (`docs/ROADMAP.md`) based on competitive analysis of FlightRadar24 and AirNav RadarBox
+  - Phase 7: Feeder Dashboard Enhancement (scoring, range tracking, uptime viz)
+  - Phase 8: Map Feature Parity (data sources, estimation, day/night)
+  - Phase 9: Advanced Filtering (categories, altitude/speed, presets)
+  - Phase 10: Weather Integration (radar, clouds)
+  - Phase 11: UX Polish (units, keyboard shortcuts, export)
+  - Phase 12: API & Integration (docs, HangarTrak, WebSocket)
+- Competitive technical analysis section in roadmap documenting:
+  - FR24 tech stack: Vue.js 3, gRPC-web (Protocol Buffers), deck.gl (WebGL), Dexie.js (IndexedDB)
+  - RadarBox tech stack: React, OpenLayers 10.4.0, H3 hexagonal indexing, Axios
+  - Data feed comparison: FR24 uses ~6s polling with ~45KB protobuf payloads
+  - Technical recommendations: gzip compression, sprite sheets, IndexedDB caching, H3 for coverage
+
 ### Fixed
 - Database schema migration: added `apiKeyHash`, `apiKeyPrefix` columns to `user` table (replacing old `apiKey`) and `heartbeatToken` to `Feeder` table
 - Map aircraft icons not rendering after dynamic import refactor — replaced unreliable `onLoad` callback with polling `useEffect` that waits for map readiness before adding custom SDF icon

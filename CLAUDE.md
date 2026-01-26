@@ -3,8 +3,9 @@
 ## Project Overview
 HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 6 - Live map with playback, integrating with HangarTrak
+**Status:** Phase 6 Complete, Phase 7 Planning (Feeder Dashboard Enhancement)
 **Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
+**Roadmap:** See `docs/ROADMAP.md` for full development plan based on FR24/RadarBox analysis
 
 ## Integration with HangarTrak
 
@@ -356,4 +357,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 25, 2026 (Phase 6 Live Map Complete)
+**Last Updated:** January 25, 2026 (Phase 7 Roadmap Created)
