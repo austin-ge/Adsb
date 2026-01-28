@@ -96,9 +96,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Generate unique UUID and heartbeat token for the feeder
+    // Generate unique UUID and enrollment token for the feeder
+    // Note: heartbeatToken is NOT generated here - it's created during enrollment
     const uuid = randomUUID();
-    const heartbeatToken = randomBytes(32).toString("hex");
+    const enrollmentToken = randomBytes(32).toString("hex");
+    const enrollmentExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
     const feeder = await prisma.feeder.create({
       data: {
@@ -106,7 +108,8 @@ export async function POST(request: Request) {
         name: name.trim(),
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
-        heartbeatToken,
+        enrollmentToken,
+        enrollmentExpires,
         userId: session.user.id,
       },
     });

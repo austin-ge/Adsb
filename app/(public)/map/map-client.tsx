@@ -13,7 +13,6 @@ import {
   getAltitudeColor,
   getEmergencyInfo,
 } from "./types";
-import { useUnits, getAltitudeRanges } from "@/lib/units";
 
 // Mapbox styles - map style is independent from UI theme
 const MAPBOX_STYLES = {
@@ -39,6 +38,14 @@ import { RangeRings } from "./range-rings";
 import { MapControls } from "./map-controls";
 import { CoverageHeatmap } from "./coverage-heatmap";
 import { AirportMarkers } from "./airport-markers";
+import {
+  SelectedAircraftPanel,
+  StatsOverlay,
+  AltitudeLegend,
+  LoadingOverlay,
+  FlightLoadingOverlay,
+  FlightErrorToast,
+} from "@/components/map";
 
 function buildAircraftGeojson(aircraft: Aircraft[]) {
   return {
@@ -79,20 +86,15 @@ interface TrailPoint {
   timestamp: number;
 }
 
-const MAX_TRAIL_POINTS = 10000; // Keep full flight path
-const PLAYBACK_MAX_TRAIL_POINTS = 2000; // Reduced limit during playback to prevent memory issues
-const TRAIL_MAX_AGE_MS = 60 * 60 * 1000; // Clean up after 1 hour of no updates
+const MAX_TRAIL_POINTS = 10000;
+const PLAYBACK_MAX_TRAIL_POINTS = 2000;
+const TRAIL_MAX_AGE_MS = 60 * 60 * 1000;
 
-// Module-level constant for empty GeoJSON to avoid re-creating on every render
 const EMPTY_FEATURE_COLLECTION: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
   features: [],
 };
 
-/**
- * Binary search to find the first index in a sorted trail array where timestamp >= targetTime.
- * Returns trail.length if all timestamps are before targetTime.
- */
 function findTrailStartIndex(trail: TrailPoint[], targetTime: number): number {
   let low = 0;
   let high = trail.length;
@@ -113,13 +115,7 @@ export default function MapPage() {
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Units context for formatting
-  const { units, formatAltitude, formatSpeed, formatVerticalRate } = useUnits();
-
-  // Mount state for client-side hydration
   const [mounted, setMounted] = useState(false);
-
-  // Map style state (independent from UI theme) - must be declared before mapStyle useMemo
   const [mapStyleKey, setMapStyleKey] = useState<MapStyleKey>(() => {
     if (typeof window === "undefined") return "dark";
     try {
@@ -133,18 +129,15 @@ export default function MapPage() {
     return "dark";
   });
 
-  // Track mount state to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Get the appropriate map style based on mapStyleKey (independent from UI theme)
   const mapStyle = useMemo(() => {
-    if (!mounted) return MAPBOX_STYLES.dark; // Default during SSR
+    if (!mounted) return MAPBOX_STYLES.dark;
     return MAPBOX_STYLES[mapStyleKey];
   }, [mounted, mapStyleKey]);
 
-  // Persist map style to localStorage
   useEffect(() => {
     if (!mounted) return;
     try {
@@ -154,14 +147,10 @@ export default function MapPage() {
     }
   }, [mounted, mapStyleKey]);
 
-  // Determine if map style is light (for label colors)
   const isLightMapStyle = mapStyleKey === "light" || mapStyleKey === "streets";
-
-  // Text colors that work on both light and dark map styles
   const labelTextColor = isLightMapStyle ? "#1e293b" : "#e2e8f0";
   const labelHaloColor = isLightMapStyle ? "#ffffff" : "#0f172a";
 
-  // Track whether we have initialized from URL (prevents re-centering on every data update)
   const initializedFromUrlRef = useRef(false);
   const pendingUrlHexRef = useRef<string | null>(null);
   const [mapCenter, setMapCenter] = useState({ lat: 39.8283, lng: -98.5795 });
@@ -170,7 +159,6 @@ export default function MapPage() {
   const aircraftRef = useRef<Aircraft[]>([]);
   const pulseAnimRef = useRef<number>(0);
 
-  // Playback mode state
   const [isPlaybackMode, setIsPlaybackMode] = useState(false);
   const [playbackAircraft, setPlaybackAircraft] = useState<Aircraft[]>([]);
   const [playbackTime, setPlaybackTime] = useState<number>(0);
@@ -178,42 +166,29 @@ export default function MapPage() {
   const playbackAircraftRef = useRef<Aircraft[]>([]);
   const playbackStateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trailVersionRef = useRef(0);
-  // Track previous aircraft hex set for optimized trail cleanup
   const prevAircraftHexesRef = useRef<Set<string>>(new Set());
 
-  // Flight replay state (for individual flight playback from search)
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [flightPositions, setFlightPositions] = useState<FlightPosition[]>([]);
   const [isLoadingFlight, setIsLoadingFlight] = useState(false);
   const [flightError, setFlightError] = useState<string | null>(null);
 
-  // Range rings state
   const [rangeRingsCenter, setRangeRingsCenter] = useState<{ lat: number; lng: number } | null>(null);
-
-  // Coverage heatmap state
   const [coverageHeatmapEnabled, setCoverageHeatmapEnabled] = useState(false);
-
-  // Airport markers state
   const [airportMarkersEnabled, setAirportMarkersEnabled] = useState(false);
-
-  // All aircraft trails state
   const [allTrailsEnabled, setAllTrailsEnabled] = useState(false);
 
-  // Initialize selectedHex from URL on mount (only once)
   useEffect(() => {
     if (initializedFromUrlRef.current) return;
     const aircraftParam = searchParams.get("aircraft");
     if (aircraftParam) {
-      // Store the pending hex - we will select and center on it once data loads
       pendingUrlHexRef.current = aircraftParam.toUpperCase();
       setSelectedHex(pendingUrlHexRef.current);
     }
     initializedFromUrlRef.current = true;
   }, [searchParams]);
 
-  // Sync URL when selectedHex changes (using history API to avoid re-renders)
   useEffect(() => {
-    // Skip URL update during initial load from URL param
     if (pendingUrlHexRef.current === selectedHex) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -223,18 +198,15 @@ export default function MapPage() {
       params.delete("aircraft");
     }
     const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
-    // Use history API directly to avoid triggering Next.js navigation/re-renders
     window.history.replaceState(null, "", newUrl);
   }, [selectedHex]);
 
-  // Use SWR for aircraft polling with 1-second refresh (paused during playback)
   const { data: aircraftData, isLoading } = useSWR<AircraftResponse>(
     isPlaybackMode ? null : "/api/map/aircraft",
     fetcher,
     { refreshInterval: 1000 }
   );
 
-  // Fetch coverage data only when heatmap is enabled (refresh every 5 minutes)
   interface CoverageResponse {
     points: Array<{ lat: number; lon: number; count: number }>;
     maxCount: number;
@@ -242,41 +214,45 @@ export default function MapPage() {
   const { data: coverageData } = useSWR<CoverageResponse>(
     coverageHeatmapEnabled ? "/api/map/coverage" : null,
     fetcher,
-    { refreshInterval: 300000 } // 5 minutes
+    { refreshInterval: 300000 }
   );
 
-  // Memoize coverage props to prevent unnecessary re-renders of CoverageHeatmap
   const coveragePoints = useMemo(() => coverageData?.points ?? [], [coverageData?.points]);
   const coverageMaxCount = coverageData?.maxCount ?? 0;
 
-  // In playback mode, use playback aircraft data; otherwise use live data
   const liveAircraft = aircraftData?.aircraft ?? [];
   const aircraft = isPlaybackMode ? playbackAircraft : liveAircraft;
-  const lastUpdate = aircraftData ? Date.now() : 0;
+  const lastUpdateRef = useRef<number>(0);
+  if (aircraftData) {
+    lastUpdateRef.current = Date.now();
+  }
 
-  // Keep aircraft ref in sync for stable callbacks
+  // Compute update status string for display (avoids Date.now() call in child component render)
+  // aircraftData is intentionally in deps to trigger recompute when new data arrives
+  const updateStatus = useMemo(() => {
+    if (!lastUpdateRef.current) return "Connecting\u2026";
+    const secondsAgo = Math.round((Date.now() - lastUpdateRef.current) / 1000);
+    return `Updated ${secondsAgo}s ago`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aircraftData]);
+
   aircraftRef.current = aircraft;
 
-  // Auto-center on aircraft from URL parameter once data loads
   useEffect(() => {
     const pendingHex = pendingUrlHexRef.current;
     if (!pendingHex || !mapRef.current || aircraft.length === 0) return;
 
     const ac = aircraft.find((a) => a.hex.toUpperCase() === pendingHex);
     if (ac) {
-      // Found the aircraft - center the map on it
       mapRef.current.flyTo({
         center: [ac.lon, ac.lat],
         zoom: Math.max(mapRef.current.getZoom(), 8),
         duration: 1000,
       });
-      // Clear pending so we do not re-center on subsequent data updates
       pendingUrlHexRef.current = null;
     }
-    // If aircraft not found, keep pendingHex set in case it appears later
   }, [aircraft]);
 
-  // Update trails when aircraft data changes
   useEffect(() => {
     if (!aircraftData) return;
     const now = Date.now();
@@ -308,10 +284,8 @@ export default function MapPage() {
       }
     }
 
-    // Only run cleanup when aircraft have disappeared (compare with previous set)
     const prevHexes = prevAircraftHexesRef.current;
     if (prevHexes.size > 0 && (trails.size > currentHexes.size || prevHexes.size > currentHexes.size)) {
-      // Find hexes that were in previous set but not in current (disappeared aircraft)
       for (const hex of prevHexes) {
         if (!currentHexes.has(hex) && trails.has(hex)) {
           const trail = trails.get(hex)!;
@@ -325,11 +299,9 @@ export default function MapPage() {
       }
     }
 
-    // Update previous hexes ref for next comparison
     prevAircraftHexesRef.current = currentHexes;
   }, [aircraftData]);
 
-  // Build GeoJSON for emergency aircraft pulse rings (moved above pulse animation)
   const emergencyGeojson = useMemo(() => {
     return {
       type: "FeatureCollection" as const,
@@ -348,10 +320,8 @@ export default function MapPage() {
     };
   }, [aircraft]);
 
-  // Derive count directly from the already-computed emergencyGeojson (no separate filter pass)
   const emergencyCount = emergencyGeojson.features.length;
 
-  // Pulse animation via Mapbox API (no React re-renders) - only runs when emergencies exist
   useEffect(() => {
     if (emergencyCount === 0) return;
 
@@ -371,15 +341,12 @@ export default function MapPage() {
     return () => cancelAnimationFrame(pulseAnimRef.current);
   }, [emergencyCount]);
 
-  // Track when all aircraft type icons have been added to the map
   const [iconsReady, setIconsReady] = useState(false);
 
-  // Reset icons ready state when map style changes (theme switch)
   useEffect(() => {
     setIconsReady(false);
   }, [mapStyle]);
 
-  // Poll for map readiness and register all aircraft type icons
   useEffect(() => {
     if (iconsReady) return;
     let cancelled = false;
@@ -391,7 +358,6 @@ export default function MapPage() {
         return;
       }
 
-      // Check if all icons already loaded (e.g. after style reload)
       const allLoaded = AIRCRAFT_ICON_TYPES.every((t) =>
         map.hasImage(getIconImageName(t))
       );
@@ -400,7 +366,6 @@ export default function MapPage() {
         return;
       }
 
-      // Render and register each aircraft type icon as an SDF image
       const size = 48;
       for (const iconType of AIRCRAFT_ICON_TYPES) {
         const imageName = getIconImageName(iconType);
@@ -415,19 +380,15 @@ export default function MapPage() {
     return () => { cancelled = true; };
   }, [iconsReady, mapStyle]);
 
-  // Build GeoJSON from aircraft data (selectedHex excluded to avoid rebuild on click)
   const geojson = useMemo(() => buildAircraftGeojson(aircraft), [aircraft]);
 
-  // Build trail GeoJSON for selected aircraft (live or playback mode)
   const trailGeojson = useMemo(() => {
-    // In playback mode, show trails for all aircraft
     if (isPlaybackMode) {
       const features: GeoJSON.Feature[] = [];
       const trails = playbackTrailsRef.current;
 
       for (const [hex, trail] of trails.entries()) {
         if (trail.length < 2) continue;
-        // Only show trail for selected aircraft, or all if none selected
         if (selectedHex && hex !== selectedHex) continue;
 
         for (let i = 0; i < trail.length - 1; i++) {
@@ -455,7 +416,6 @@ export default function MapPage() {
       };
     }
 
-    // Live mode: show trail for selected aircraft only
     if (!selectedHex) {
       return {
         type: "FeatureCollection" as const,
@@ -471,7 +431,6 @@ export default function MapPage() {
       };
     }
 
-    // Create line segments colored by altitude
     const features: GeoJSON.Feature[] = [];
     for (let i = 0; i < trail.length - 1; i++) {
       const from = trail[i];
@@ -496,35 +455,26 @@ export default function MapPage() {
       type: "FeatureCollection" as const,
       features,
     };
-    // trailVersionRef.current is used instead of playbackTime to avoid per-frame recomputation.
-    // It only increments when a new trail point is actually added (see handlePlaybackUpdate).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHex, aircraft, isPlaybackMode, trailVersionRef.current]);
 
-  // Build GeoJSON for all aircraft trails (short 2-minute segments, excluding selected aircraft)
-  // Only computed when allTrailsEnabled is true; returns module-level constant when disabled
-  // to avoid creating new objects on every aircraft update.
   const allTrailsGeojson = useMemo(() => {
-    // Disabled or in playback mode - return shared empty constant (no allocation)
     if (!allTrailsEnabled || isPlaybackMode) {
       return EMPTY_FEATURE_COLLECTION;
     }
 
     const now = Date.now();
-    const cutoffTime = now - 2 * 60 * 1000; // 2 minutes ago
+    const cutoffTime = now - 2 * 60 * 1000;
     const trails = trailsRef.current;
     const features: GeoJSON.Feature[] = [];
 
     for (const [hex, trail] of trails.entries()) {
-      // Skip the selected aircraft - it has its own longer trail
       if (hex === selectedHex) continue;
       if (trail.length < 2) continue;
 
-      // Binary search to find the first point within the time window (O(log n) instead of O(n))
       const startIdx = findTrailStartIndex(trail, cutoffTime);
-      if (startIdx >= trail.length - 1) continue; // No recent points
+      if (startIdx >= trail.length - 1) continue;
 
-      // Create line segments for the recent portion
       for (let i = startIdx; i < trail.length - 1; i++) {
         const from = trail[i];
         const to = trail[i + 1];
@@ -548,7 +498,6 @@ export default function MapPage() {
       type: "FeatureCollection" as const,
       features,
     };
-    // `aircraft` triggers recomputation when data updates, even though we read from trailsRef.current
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allTrailsEnabled, selectedHex, aircraft, isPlaybackMode]);
 
@@ -558,7 +507,6 @@ export default function MapPage() {
   );
 
   const handleMapClick = useCallback((event: MapMouseEvent) => {
-    // Clear pending URL ref so URL sync works for manual interactions
     pendingUrlHexRef.current = null;
     const features = event.features;
     if (features && features.length > 0) {
@@ -570,7 +518,6 @@ export default function MapPage() {
   }, []);
 
   const handleMoveEnd = useCallback((evt: ViewStateChangeEvent) => {
-    // Debounce map center state updates to avoid re-renders on every pan
     if (mapCenterDebounceRef.current) {
       clearTimeout(mapCenterDebounceRef.current);
     }
@@ -580,7 +527,6 @@ export default function MapPage() {
   }, []);
 
   const handleSidebarSelect = useCallback((hex: string) => {
-    // Clear pending URL ref so URL sync works for manual interactions
     pendingUrlHexRef.current = null;
     setSelectedHex(hex);
     const ac = aircraftRef.current.find((a) => a.hex === hex);
@@ -593,8 +539,6 @@ export default function MapPage() {
     }
   }, []);
 
-  // Playback callbacks - updates Mapbox source directly to avoid React re-renders at 60fps.
-  // React state is updated at a throttled rate (every 200ms) for UI displays only.
   const handlePlaybackUpdate = useCallback(
     (
       positions: Array<{
@@ -609,7 +553,6 @@ export default function MapPage() {
       }>,
       timestamp: number
     ) => {
-      // Convert playback positions to Aircraft format
       const mapped: Aircraft[] = positions.map((p) => ({
         hex: p.hex,
         flight: p.flight,
@@ -626,10 +569,8 @@ export default function MapPage() {
         seen: null,
       }));
 
-      // Store in ref for immediate access (no React re-render)
       playbackAircraftRef.current = mapped;
 
-      // Update the Mapbox source directly for smooth 60fps rendering
       const map = mapRef.current?.getMap();
       if (map) {
         const aircraftSource = map.getSource("aircraft") as mapboxgl.GeoJSONSource | undefined;
@@ -638,7 +579,6 @@ export default function MapPage() {
         }
       }
 
-      // Throttle React state updates to ~5fps (every 200ms) for UI elements
       if (!playbackStateThrottleRef.current) {
         playbackStateThrottleRef.current = setTimeout(() => {
           playbackStateThrottleRef.current = null;
@@ -647,7 +587,6 @@ export default function MapPage() {
         }, 200);
       }
 
-      // Build trails during playback
       let trailAdded = false;
       const trails = playbackTrailsRef.current;
       for (const ac of mapped) {
@@ -672,8 +611,6 @@ export default function MapPage() {
         }
       }
 
-      // Only increment trail version when new points are actually added
-      // This triggers trailGeojson recompute only when needed, not every frame
       if (trailAdded) {
         trailVersionRef.current += 1;
       }
@@ -683,7 +620,6 @@ export default function MapPage() {
 
   const handleToggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
 
-  // Handler for closing the selected aircraft panel (clears URL param too)
   const handleClearSelection = useCallback(() => {
     pendingUrlHexRef.current = null;
     setSelectedHex(null);
@@ -707,13 +643,11 @@ export default function MapPage() {
       clearTimeout(playbackStateThrottleRef.current);
       playbackStateThrottleRef.current = null;
     }
-    // Also clear flight replay state
     setSelectedFlightId(null);
     setFlightPositions([]);
     setFlightError(null);
   }, []);
 
-  // Handle flight selection from search - load flight track and start playback
   const handleSelectFlight = useCallback(async (flightId: string) => {
     setIsLoadingFlight(true);
     setFlightError(null);
@@ -735,7 +669,6 @@ export default function MapPage() {
 
       setFlightPositions(positions);
 
-      // Auto-fit map bounds to flight track
       if (mapRef.current && positions.length > 1) {
         const lngs = positions.map((p) => p.lon);
         const lats = positions.map((p) => p.lat);
@@ -749,7 +682,6 @@ export default function MapPage() {
         });
       }
 
-      // Convert positions to playback format and trigger playback mode
       const snapshots = positions.map((pos) => ({
         timestamp: pos.ts,
         aircraft: [
@@ -766,16 +698,12 @@ export default function MapPage() {
         ],
       }));
 
-      // Enter playback mode with this flight's data
-      // We'll simulate the playback by setting initial state
       playbackTrailsRef.current = new Map();
       setIsPlaybackMode(true);
       setSelectedHex(null);
 
-      // Set initial playback time to start of flight
       if (positions.length > 0) {
         setPlaybackTime(positions[0].ts);
-        // Update with first position
         handlePlaybackUpdate(snapshots[0].aircraft, positions[0].ts);
       }
     } catch (err) {
@@ -786,36 +714,29 @@ export default function MapPage() {
     }
   }, [handlePlaybackUpdate]);
 
-  // Handle range rings center change from map controls
   const handleRangeRingsChange = useCallback((center: { lat: number; lng: number } | null) => {
     setRangeRingsCenter(center);
   }, []);
 
-  // Handle coverage heatmap toggle from map controls
   const handleCoverageHeatmapChange = useCallback((enabled: boolean) => {
     setCoverageHeatmapEnabled(enabled);
   }, []);
 
-  // Handle airport markers toggle from map controls
   const handleAirportMarkersChange = useCallback((enabled: boolean) => {
     setAirportMarkersEnabled(enabled);
   }, []);
 
-  // Handle all trails toggle from map controls
   const handleAllTrailsChange = useCallback((enabled: boolean) => {
     setAllTrailsEnabled(enabled);
   }, []);
 
-  // Handle map style change from map controls
   const handleMapStyleChange = useCallback((style: MapStyleKey) => {
     setMapStyleKey(style);
   }, []);
 
-  // Handle chart seek - update playback to specific time
   const handleChartSeek = useCallback((time: number) => {
     if (flightPositions.length === 0) return;
 
-    // Find the position at or before this time
     let bestIdx = 0;
     for (let i = 0; i < flightPositions.length; i++) {
       if (flightPositions[i].ts <= time) {
@@ -828,7 +749,6 @@ export default function MapPage() {
     const pos = flightPositions[bestIdx];
     setPlaybackTime(time);
 
-    // Update playback with interpolated position
     handlePlaybackUpdate(
       [
         {
@@ -863,24 +783,19 @@ export default function MapPage() {
         onMoveEnd={handleMoveEnd}
         attributionControl={false}
       >
-        {/* Coverage heatmap layer - rendered below everything else */}
         <CoverageHeatmap
           points={coveragePoints}
           maxCount={coverageMaxCount}
           visible={coverageHeatmapEnabled}
         />
 
-        {/* Airport markers layer - rendered below aircraft */}
         <AirportMarkers
           visible={airportMarkersEnabled}
           isLightMap={isLightMapStyle}
         />
 
-        {/* Range rings layer - rendered below aircraft */}
         <RangeRings center={rangeRingsCenter} visible={rangeRingsCenter !== null} />
 
-        {/* All aircraft trails - short 2-minute segments */}
-        {/* Always render Source/Layer but control visibility via layout property to avoid destroying/recreating Mapbox source */}
         <Source id="all-trails" type="geojson" data={allTrailsGeojson}>
           <Layer
             id="all-trails-line"
@@ -898,7 +813,6 @@ export default function MapPage() {
           />
         </Source>
 
-        {/* Flight trail for selected aircraft */}
         <Source id="trail" type="geojson" data={trailGeojson}>
           <Layer
             id="trail-line"
@@ -915,7 +829,6 @@ export default function MapPage() {
           />
         </Source>
 
-        {/* Emergency aircraft pulse rings */}
         <Source id="emergency-pulse" type="geojson" data={emergencyGeojson}>
           <Layer
             id="emergency-pulse-ring"
@@ -1023,7 +936,6 @@ export default function MapPage() {
         </Source>
       </MapGL>
 
-      {/* Map controls panel - positioned below selected aircraft panel when shown */}
       <MapControls
         onRangeRingsChange={handleRangeRingsChange}
         onCoverageHeatmapChange={handleCoverageHeatmapChange}
@@ -1034,7 +946,6 @@ export default function MapPage() {
         offsetTop={selectedAircraft ? 300 : 0}
       />
 
-      {/* Aircraft list sidebar */}
       <AircraftSidebar
         aircraft={aircraft}
         selectedHex={selectedHex}
@@ -1045,182 +956,25 @@ export default function MapPage() {
         onSelectFlight={handleSelectFlight}
       />
 
-      {/* Stats overlay - top left */}
-      <div className={`absolute top-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-800 dark:text-gray-200 font-mono tabular-nums transition-[left] duration-200 border border-gray-200 dark:border-transparent shadow-lg dark:shadow-none ${sidebarOpen ? "left-[21rem]" : "left-4"} hidden md:block`} role="status" aria-live="polite" aria-atomic="true">
-        <div className="flex items-center gap-3">
-          <span>{aircraft.length} aircraft</span>
-          {emergencyCount > 0 && (
-            <>
-              <span className="text-gray-400 dark:text-gray-500">|</span>
-              <span className="text-red-600 dark:text-red-400 font-bold animate-pulse">
-                {emergencyCount} emergency
-              </span>
-            </>
-          )}
-          <span className="text-gray-400 dark:text-gray-500">|</span>
-          {isPlaybackMode ? (
-            <span className="text-amber-600 dark:text-amber-400 font-medium">
-              PLAYBACK
-            </span>
-          ) : (
-            <span className="text-gray-500 dark:text-gray-400">
-              {lastUpdate
-                ? `Updated ${Math.round((Date.now() - lastUpdate) / 1000)}s ago`
-                : "Connecting\u2026"}
-            </span>
-          )}
-        </div>
-      </div>
+      <StatsOverlay
+        aircraftCount={aircraft.length}
+        emergencyCount={emergencyCount}
+        isPlaybackMode={isPlaybackMode}
+        updateStatus={updateStatus}
+        sidebarOpen={sidebarOpen}
+      />
 
-      {/* Stats overlay - mobile (always left-4) */}
-      <div className="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-gray-200 font-mono tabular-nums md:hidden">
-        <div className="flex items-center gap-3">
-          <span>{aircraft.length} aircraft</span>
-          {isPlaybackMode ? (
-            <>
-              <span className="text-gray-500">|</span>
-              <span className="text-amber-400 font-medium">PLAYBACK</span>
-            </>
-          ) : emergencyCount > 0 ? (
-            <>
-              <span className="text-gray-500">|</span>
-              <span className="text-red-400 font-bold animate-pulse">
-                {emergencyCount} emergency
-              </span>
-            </>
-          ) : null}
-        </div>
-      </div>
+      <AltitudeLegend sidebarOpen={sidebarOpen} />
 
-      {/* Altitude legend - bottom left */}
-      <div className={`absolute bottom-8 bg-gray-900/90 backdrop-blur-sm rounded-lg px-3 py-2 text-xs text-gray-300 transition-[left] duration-200 ${sidebarOpen ? "md:left-[21rem]" : "left-4"} left-4`}>
-        <div className="font-semibold mb-1 text-gray-100">Altitude</div>
-        <div className="flex flex-col gap-0.5">
-          {getAltitudeRanges(units).map(({ color, label }) => (
-            <div key={color} className="flex items-center gap-2">
-              <div
-                className="w-3 h-2 rounded-sm"
-                style={{ backgroundColor: color }}
-              />
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-gray-700 mt-2 pt-2">
-          <div className="font-semibold mb-1 text-gray-100">Emergency</div>
-          <div className="flex flex-col gap-0.5">
-            {[
-              { color: "#ff0000", code: "7500", label: "Hijack" },
-              { color: "#ff8c00", code: "7600", label: "Radio failure" },
-              { color: "#ff0000", code: "7700", label: "Emergency" },
-            ].map(({ color, code, label }) => (
-              <div key={code} className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full animate-pulse"
-                  style={{ backgroundColor: color }}
-                />
-                <span>{code} – {label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Selected aircraft panel - top right */}
       {selectedAircraft && (
-        <div className="absolute top-4 right-4 w-72 bg-gray-900/95 backdrop-blur-sm rounded-lg border border-gray-700 shadow-xl overflow-hidden">
-          {getEmergencyInfo(selectedAircraft.squawk) && (
-            <div
-              className="px-4 py-2 text-center text-white font-bold text-sm animate-pulse"
-              style={{ backgroundColor: getEmergencyInfo(selectedAircraft.squawk)!.color }}
-            >
-              {getEmergencyInfo(selectedAircraft.squawk)!.label} (SQUAWK {selectedAircraft.squawk})
-              <div className="text-xs font-normal opacity-90">
-                {getEmergencyInfo(selectedAircraft.squawk)!.description}
-              </div>
-            </div>
-          )}
-          <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-            <div>
-              <div className="text-white font-bold text-lg">
-                {selectedAircraft.flight || selectedAircraft.hex.toUpperCase()}
-              </div>
-              {selectedAircraft.registration && (
-                <div className="text-gray-400 text-sm">
-                  {selectedAircraft.registration}
-                  {selectedAircraft.type && ` · ${selectedAircraft.type}`}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleClearSelection}
-              className="text-gray-400 hover:text-white text-xl leading-none"
-              aria-label="Close aircraft details"
-            >
-              &times;
-            </button>
-          </div>
-          <div className="px-4 py-3 space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <div className="text-gray-500 text-xs uppercase">Altitude</div>
-                <div className="text-white font-medium">
-                  {formatAltitude(selectedAircraft.altitude)}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase">Speed</div>
-                <div className="text-white font-medium">
-                  {formatSpeed(selectedAircraft.ground_speed)}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase">
-                  Vertical Rate
-                </div>
-                <div className="text-white font-medium">
-                  {formatVerticalRate(selectedAircraft.vertical_rate)}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase">Heading</div>
-                <div className="text-white font-medium">
-                  {selectedAircraft.track !== null
-                    ? `${Math.round(selectedAircraft.track)}°`
-                    : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase">Squawk</div>
-                <div className={`font-medium ${
-                  getEmergencyInfo(selectedAircraft.squawk)
-                    ? "text-red-400 font-bold"
-                    : "text-white"
-                }`}>
-                  {selectedAircraft.squawk || "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs uppercase">ICAO</div>
-                <div className="text-white font-medium font-mono">
-                  {selectedAircraft.hex.toUpperCase()}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SelectedAircraftPanel
+          aircraft={selectedAircraft}
+          onClose={handleClearSelection}
+        />
       )}
 
-      {/* Loading overlay */}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
-          <div className="text-white text-lg font-medium animate-pulse">
-            Loading aircraft data\u2026
-          </div>
-        </div>
-      )}
+      <LoadingOverlay isLoading={isLoading} />
 
-      {/* Playback controls */}
       <PlaybackControls
         onPlaybackUpdate={handlePlaybackUpdate}
         onPlaybackEnd={handlePlaybackEnd}
@@ -1228,7 +982,6 @@ export default function MapPage() {
         onEnterPlayback={handleEnterPlayback}
       />
 
-      {/* Flight chart panel - shown during flight replay */}
       {isPlaybackMode && selectedFlightId && flightPositions.length > 0 && (
         <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-[min(95vw,800px)] h-40 z-10">
           <div className="bg-gray-900/95 backdrop-blur-sm rounded-lg border border-gray-700 shadow-xl p-3 h-full">
@@ -1241,37 +994,10 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Flight loading overlay */}
-      {isLoadingFlight && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-30">
-          <div className="bg-gray-800 rounded-lg px-6 py-4 shadow-xl border border-gray-700">
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-white text-sm font-medium">Loading flight data...</span>
-            </div>
-          </div>
-        </div>
-      )}
+      <FlightLoadingOverlay isLoading={isLoadingFlight} />
 
-      {/* Flight error toast */}
-      {flightError && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
-          <div className="bg-red-900/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-xl border border-red-700">
-            <div className="flex items-center gap-2">
-              <span className="text-red-200 text-sm">{flightError}</span>
-              <button
-                onClick={() => setFlightError(null)}
-                className="text-red-300 hover:text-white ml-2"
-                aria-label="Dismiss error"
-              >
-                &times;
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FlightErrorToast error={flightError} onDismiss={() => setFlightError(null)} />
 
-      {/* Branding - bottom right (shift up when playback controls visible) */}
       <div className={`absolute right-4 text-xs text-gray-500 ${isPlaybackMode ? (selectedFlightId ? "bottom-[17rem]" : "bottom-24") : "bottom-8"}`}>
         HangarTrak Radar
       </div>

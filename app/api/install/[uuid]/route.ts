@@ -9,10 +9,17 @@ interface RouteParams {
 export async function GET(request: Request, { params }: RouteParams) {
   const { uuid } = await params;
 
-  // Verify the feeder UUID exists
+  // Verify the feeder UUID exists and has valid enrollment token
   const feeder = await prisma.feeder.findUnique({
     where: { uuid },
-    select: { id: true, name: true, uuid: true, heartbeatToken: true },
+    select: {
+      id: true,
+      name: true,
+      uuid: true,
+      enrollmentToken: true,
+      enrollmentExpires: true,
+      heartbeatToken: true,
+    },
   });
 
   if (!feeder) {
@@ -23,6 +30,61 @@ exit 1
 `,
       {
         status: 404,
+        headers: {
+          "Content-Type": "text/plain",
+        },
+      }
+    );
+  }
+
+  // Check if feeder has valid enrollment token (for new installations)
+  // If already enrolled (has heartbeatToken), show re-enrollment instructions
+  if (feeder.heartbeatToken && !feeder.enrollmentToken) {
+    return new NextResponse(
+      `#!/bin/bash
+echo "=============================================="
+echo "This feeder has already been enrolled."
+echo "=============================================="
+echo ""
+echo "If you need to reinstall, you have two options:"
+echo ""
+echo "1. Use the existing token (if you have a backup):"
+echo "   The heartbeat token is stored in /usr/local/share/hangartrak-radar/token"
+echo ""
+echo "2. Reset and re-enroll:"
+echo "   a. Go to the dashboard and regenerate the install script"
+echo "   b. Run the new install command"
+echo ""
+exit 1
+`,
+      {
+        status: 409,
+        headers: {
+          "Content-Type": "text/plain",
+        },
+      }
+    );
+  }
+
+  // Check if enrollment token has expired
+  if (!feeder.enrollmentToken || !feeder.enrollmentExpires || new Date() > feeder.enrollmentExpires) {
+    return new NextResponse(
+      `#!/bin/bash
+echo "=============================================="
+echo "Error: Enrollment token has expired."
+echo "=============================================="
+echo ""
+echo "For security, enrollment tokens are only valid for 1 hour."
+echo ""
+echo "To fix this:"
+echo "  1. Go to your dashboard at ${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}"
+echo "  2. Click 'Regenerate Install Script' for this feeder"
+echo "  3. Run the new install command"
+echo ""
+exit 1
+`,
+      {
+        status: 410,
         headers: {
           "Content-Type": "text/plain",
         },
@@ -61,13 +123,14 @@ set -e
 
 FEEDER_UUID="${feeder.uuid}"
 FEEDER_NAME="${safeName}"
-HEARTBEAT_TOKEN="${feeder.heartbeatToken}"
+ENROLLMENT_TOKEN="${feeder.enrollmentToken}"
 SERVER="${serverHost}"
 SERVER_URL="${serverUrl}"
 BEAST_PORT="${beastPort}"
 
 INSTALL_DIR="/usr/local/share/hangartrak-radar"
 SERVICE_NAME="hangartrak-radar-stats"
+TOKEN_FILE="\$INSTALL_DIR/token"
 
 echo "======================================"
 echo "HangarTrak Radar - Feeder Setup"
@@ -88,8 +151,65 @@ fi
 mkdir -p "\$INSTALL_DIR"
 chmod 700 "\$INSTALL_DIR"
 echo "\$FEEDER_UUID" > "\$INSTALL_DIR/uuid"
-echo "\$HEARTBEAT_TOKEN" > "\$INSTALL_DIR/token"
-chmod 600 "\$INSTALL_DIR/token"
+
+#######################################
+# ENROLLMENT: Exchange enrollment token for permanent heartbeat token
+#######################################
+
+# Check if already enrolled (token file exists and is valid)
+if [ -f "\$TOKEN_FILE" ] && [ -s "\$TOKEN_FILE" ]; then
+  echo "Existing heartbeat token found. Skipping enrollment."
+  echo "To re-enroll, delete \$TOKEN_FILE and run this script again."
+else
+  echo ""
+  echo "Enrolling feeder with server..."
+  echo ""
+
+  # Call enrollment endpoint to exchange enrollment token for heartbeat token
+  ENROLL_RESPONSE=\$(curl -sS -m 30 \\
+    -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer \$ENROLLMENT_TOKEN" \\
+    "\${SERVER_URL}/api/v1/feeders/\${FEEDER_UUID}/enroll" 2>&1)
+  ENROLL_RV=\$?
+
+  if [ \$ENROLL_RV -ne 0 ]; then
+    echo "ERROR: Failed to connect to enrollment server (curl error \$ENROLL_RV)"
+    echo "Response: \$ENROLL_RESPONSE"
+    exit 1
+  fi
+
+  # Check for success
+  if ! echo "\$ENROLL_RESPONSE" | grep -q '"success":true'; then
+    echo "ERROR: Enrollment failed"
+    echo "Response: \$ENROLL_RESPONSE"
+    echo ""
+    echo "If the enrollment token has expired, please regenerate the install script"
+    echo "from your dashboard at \${SERVER_URL}"
+    exit 1
+  fi
+
+  # Extract heartbeat token from response
+  if command -v jq &>/dev/null; then
+    HEARTBEAT_TOKEN=\$(echo "\$ENROLL_RESPONSE" | jq -r '.heartbeatToken // empty')
+  else
+    # Fallback regex extraction
+    HEARTBEAT_TOKEN=\$(echo "\$ENROLL_RESPONSE" | grep -oP '"heartbeatToken"\\s*:\\s*"\\K[a-f0-9]+')
+  fi
+
+  if [ -z "\$HEARTBEAT_TOKEN" ]; then
+    echo "ERROR: Could not extract heartbeat token from response"
+    echo "Response: \$ENROLL_RESPONSE"
+    exit 1
+  fi
+
+  # Store the heartbeat token securely
+  echo "\$HEARTBEAT_TOKEN" > "\$TOKEN_FILE"
+  chmod 600 "\$TOKEN_FILE"
+
+  echo "Enrollment successful!"
+  echo "Heartbeat token stored in \$TOKEN_FILE"
+fi
 
 #######################################
 # Feeder Software Detection

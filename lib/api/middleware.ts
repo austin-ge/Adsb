@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RateLimitResult } from "./rate-limit";
 import { getTierLimit } from "./tiers";
 import { ApiTier } from "@prisma/client";
+import { setSentryUser } from "@/lib/sentry";
 
 export interface ApiUser {
   id: string;
@@ -48,6 +49,9 @@ export async function validateApiRequest(
 
     user = dbUser;
     tier = dbUser.apiTier;
+
+    // Set Sentry user context for error tracking
+    setSentryUser({ id: dbUser.id, email: dbUser.email });
   }
 
   // Rate limit based on API key or IP
@@ -56,7 +60,7 @@ export async function validateApiRequest(
   const clientIp = forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
   const identifier = apiKey || clientIp;
   const limit = getTierLimit(tier);
-  const rateLimit = checkRateLimit(identifier, limit);
+  const rateLimit = await checkRateLimit(identifier, limit);
 
   // Add rate limit headers
   const headers = new Headers();

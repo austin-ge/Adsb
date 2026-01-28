@@ -25,7 +25,8 @@
  */
 
 import "dotenv/config";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { createWorkerPrisma } from "../lib/prisma-worker";
 
 const LOOKBACK_MINUTES = parseInt(process.env.LOOKBACK_MINUTES || "30");
 const GAP_THRESHOLD_MS =
@@ -35,7 +36,7 @@ const ALTITUDE_CHANGE_THRESHOLD = 500; // Keep positions with >500ft altitude ch
 const LOOP_MODE = process.env.SEGMENTER_LOOP === "true";
 const INTERVAL_MS = parseInt(process.env.SEGMENTER_INTERVAL_MS || "300000"); // 5 minutes
 
-const prisma = new PrismaClient();
+const prisma = createWorkerPrisma();
 
 interface Position {
   lat: number;

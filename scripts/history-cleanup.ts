@@ -14,13 +14,13 @@
  */
 
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { createWorkerPrisma } from "../lib/prisma-worker";
 
 const RETENTION_HOURS = parseInt(process.env.HISTORY_RETENTION_HOURS || "24");
 const LOOP_MODE = process.env.CLEANUP_LOOP === "true";
 const INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL_MS || "3600000"); // 1 hour
 
-const prisma = new PrismaClient();
+const prisma = createWorkerPrisma();
 
 async function cleanup() {
   const cutoff = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000);

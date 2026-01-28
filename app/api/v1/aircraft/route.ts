@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateApiRequest } from "@/lib/api/middleware";
 import { fetchAircraftData } from "@/lib/readsb";
+import { captureException } from "@/lib/sentry";
 
 // GET /api/v1/aircraft - Get live aircraft data
 export async function GET(request: NextRequest) {
@@ -127,6 +128,10 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error fetching aircraft:", error);
+    captureException(error, {
+      tags: { "api.endpoint": "v1.aircraft" },
+      extra: { bounds, minAlt, maxAlt, flight, limit },
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

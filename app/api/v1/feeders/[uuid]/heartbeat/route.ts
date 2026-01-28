@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/api/rate-limit";
 import { haversineDistanceNm } from "@/lib/geo";
+import { setSentryFeederContext, captureException } from "@/lib/sentry";
 
 interface RouteParams {
   params: Promise<{ uuid: string }>;
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   // Rate limit: 10 heartbeats per minute per UUID
-  const rateLimit = checkRateLimit(`heartbeat:${uuid}`, 10);
+  const rateLimit = await checkRateLimit(`heartbeat:${uuid}`, 10);
   if (!rateLimit.success) {
     return NextResponse.json(
       { error: "Rate limit exceeded", reset: new Date(rateLimit.reset).toISOString() },
@@ -82,6 +83,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   if (!feeder) {
     return NextResponse.json({ error: "Feeder not found" }, { status: 404 });
+  }
+
+  // Set Sentry context for error tracking
+  setSentryFeederContext({
+    id: feeder.id,
+    uuid: feeder.uuid,
+    name: feeder.name,
+  });
+
+  // Check if feeder has been enrolled (has heartbeat token)
+  if (!feeder.heartbeatToken) {
+    return NextResponse.json(
+      { error: "Feeder not enrolled. Please run the enrollment process first." },
+      { status: 401 }
+    );
   }
 
   // Verify heartbeat token using timing-safe comparison
@@ -235,6 +251,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     console.error("Error updating feeder:", error);
+    captureException(error, {
+      extra: {
+        feederId: feeder.id,
+        feederUuid: uuid,
+        aircraftCount,
+        messages,
+        positions,
+      },
+      tags: {
+        "api.endpoint": "feeder.heartbeat",
+      },
+    });
     return NextResponse.json(
       { error: "Failed to update feeder stats" },
       { status: 500 }

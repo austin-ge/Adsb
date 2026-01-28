@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { captureException } from "@/lib/sentry";
 
 // Valid sort options
 type SortOption = "score" | "aircraft" | "messages" | "maxRange" | "avgRange";
@@ -290,6 +291,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
+    captureException(error, {
+      tags: { "api.endpoint": "leaderboard" },
+    });
     return NextResponse.json(
       { error: "Failed to fetch leaderboard" },
       { status: 500 }

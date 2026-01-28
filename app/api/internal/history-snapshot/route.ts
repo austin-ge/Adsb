@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { timingSafeEqual } from "crypto";
+import { captureException } from "@/lib/sentry";
 
 const READSB_JSON_URL =
   process.env.READSB_JSON_URL || "http://localhost:8080/data/aircraft.json";
@@ -103,6 +104,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("History snapshot error:", error);
+    captureException(error, {
+      tags: { "api.endpoint": "internal.history-snapshot" },
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

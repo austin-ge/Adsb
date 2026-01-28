@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
 
   // Rate limit: 10 requests per minute (coverage data doesn't need frequent updates)
-  const rateLimit = checkRateLimit(`map-coverage:${clientIp}`, 10);
+  const rateLimit = await checkRateLimit(`map-coverage:${clientIp}`, 10);
   if (!rateLimit.success) {
     return NextResponse.json(
       { error: "Rate limit exceeded" },

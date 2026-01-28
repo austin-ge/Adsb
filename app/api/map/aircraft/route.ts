@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const forwardedFor = request.headers.get("x-forwarded-for");
   const realIp = request.headers.get("x-real-ip");
   const clientIp = forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
-  const rateLimit = checkRateLimit(`map:${clientIp}`, 60);
+  const rateLimit = await checkRateLimit(`map:${clientIp}`, 60);
   if (!rateLimit.success) {
     return NextResponse.json(
       { error: "Rate limit exceeded" },

@@ -14,7 +14,7 @@ export async function GET(
   const realIp = request.headers.get("x-real-ip");
   const clientIp =
     forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
-  const rateLimit = checkRateLimit(`map-flight:${clientIp}`, 60);
+  const rateLimit = await checkRateLimit(`map-flight:${clientIp}`, 60);
 
   if (!rateLimit.success) {
     return NextResponse.json(

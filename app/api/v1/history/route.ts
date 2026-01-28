@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateApiRequest } from "@/lib/api/middleware";
+import { captureException } from "@/lib/sentry";
 
 // Maximum time range allowed per request (1 hour)
 const MAX_RANGE_MS = 60 * 60 * 1000;
@@ -141,6 +142,10 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("History API error:", error);
+    captureException(error, {
+      tags: { "api.endpoint": "v1.history" },
+      extra: { from: fromParam, to: toParam, hex: hexParam },
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

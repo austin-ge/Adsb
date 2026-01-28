@@ -11,9 +11,9 @@
  */
 
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { createWorkerPrisma } from "../lib/prisma-worker";
 
-const prisma = new PrismaClient();
+const prisma = createWorkerPrisma();
 
 // Configuration
 const POLL_INTERVAL = 60 * 1000; // 1 minute
