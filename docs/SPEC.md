@@ -64,6 +64,8 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - SWR (data fetching with dedup and revalidation)
 - Lucide React (icons, tree-shaken via `optimizePackageImports`)
 - next/dynamic (lazy loading for mapbox-gl, recharts)
+- Sentry (@sentry/nextjs) for error tracking and monitoring
+- Vitest for unit testing
 
 ### Backend
 - Next.js API Routes
@@ -71,6 +73,8 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - PostgreSQL
 - Better Auth 1.0
 - Zod (validation)
+- Upstash Redis (distributed rate limiting)
+- Sentry (@sentry/nextjs) for error tracking
 
 ### Infrastructure
 - Docker (aggregator: readsb + tar1090)
@@ -94,6 +98,8 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - id, uuid (unique), name
 - latitude, longitude
 - heartbeatToken (unique) - Bearer token for authenticating heartbeat requests
+- enrollmentToken (unique, nullable) - Single-use token for Pi self-registration
+- enrollmentExpires (nullable) - Expiry timestamp for enrollment token (1 hour from creation)
 - isOnline, lastSeen
 - messagesTotal, positionsTotal, aircraftSeen
 - score (0-100) - Composite score based on uptime, message rate, position rate, aircraft count
@@ -163,6 +169,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | GET | `/stats` | API Key | Network statistics |
 | GET | `/history` | API Key | Historical positions (params: from, to, hex) |
 | GET | `/feeders` | API Key | Feeder list (location restricted by tier) |
+| POST | `/feeders/[uuid]/enroll` | Enrollment token | Pi self-registration to exchange enrollment token for heartbeat token (single-use, 1h expiry) |
 | POST | `/feeders/[uuid]/heartbeat` | Bearer token | Feeder stats reporting with aircraft positions (rate limited: 10/min) |
 | GET | `/feeders/[uuid]/heartbeat` | None | Feeder status check |
 
@@ -173,9 +180,11 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/health` | Deployment readiness check (no auth required) |
 | GET | `/api/feeders` | User's feeders (authenticated) |
 | POST | `/api/feeders` | Create new feeder |
 | GET/DELETE | `/api/feeders/[id]` | Manage feeder |
+| POST | `/api/feeders/[id]/regenerate-enrollment` | Refresh enrollment token for feeder |
 | POST | `/api/user/api-key` | Generate API key |
 | GET | `/api/install/[uuid]` | Personalized Pi install script |
 | GET | `/api/leaderboard` | Leaderboard data (params: sort=score|maxRange|avgRange, search, limit) |
@@ -190,21 +199,25 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 
 1. **Automatic Tier Upgrade:** First heartbeat from a feeder upgrades owner from FREE to FEEDER tier
 2. **Location Privacy:** Feeder coordinates only exposed to FEEDER+ tier API consumers
-3. **Rate Limiting:** In-memory rate limiter keyed by API key or IP, configurable per tier. Better Auth endpoints also rate-limited (10 req/60s).
-4. **Install Scripts:** Personalized bash scripts generated per-feeder with embedded UUID
-5. **Aircraft Data Pipeline:** readsb aggregates feeds → tar1090 JSON → Next.js API → clients
-6. **Emergency Squawk Detection:** Aircraft with squawk 7500 (hijack), 7600 (radio failure), or 7700 (emergency) get color override, enlarged icons, pulsing rings, and info panel banners
-7. **Server-Side Deduplication:** `React.cache()` wraps `getServerSession` and `fetchAircraftData` to prevent redundant calls within a single request
-8. **Parallel Database Queries:** Stats and heartbeat routes use `Promise.all()` for independent queries
-9. **Bundle Optimization:** Heavy libraries (mapbox-gl, recharts) loaded via `next/dynamic` with SSR disabled; `optimizePackageImports` eliminates barrel file costs
-10. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items, polling-based custom icon loading (avoids `onLoad` timing issues with dynamic imports), canvas-rendered SDF aircraft type icons (jet/turboprop/helicopter/light/generic) with per-feature icon selection via Mapbox expressions
-11. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, semantic form attributes, map container `role="application"`, stats `aria-live="polite"`, playback controls `role="group"` with `aria-valuetext`, and focus-visible styles on interactive elements
-12. **Shared Utilities:** `lib/fetcher.ts` (SWR fetcher with error handling) and `lib/format.ts` (number formatting) prevent code duplication
-13. **Historical Playback:** Position snapshots stored every ~10s by external recorder script; map UI loads time ranges and interpolates aircraft positions between snapshots using requestAnimationFrame; heading interpolation uses shortest-arc (360/0 boundary); SWR polling paused during playback; throttled setCurrentTime to ~12-15fps; direct Mapbox source updates bypass React state at 60fps
-14. **Internal API Security:** `/api/internal/history-snapshot` requires `INTERNAL_CRON_SECRET` header (timing-safe comparison); POST-only (GET removed for CSRF prevention); readsb data validated before DB insert (hex format, lat/lon ranges)
-15. **Playback Performance:** Direct Mapbox `getSource().setData()` calls during playback avoid React re-renders; O(n) Set-based interpolation lookup replaces O(n^2) array scan; pulse animations gated on emergency count; trail points capped at 2000 during playback; version counter ref replaces playbackTime in memo deps
-16. **Data Validation:** History queries enforce `from < to`, max 60-minute range, valid hex codes, and `take: 100000` safety limit; feeder heartbeat validates hex format and coordinate ranges before insert
-17. **Feeder Scoring:** Composite 0-100 score calculated hourly using formula: `(40*uptime + 30*messageRate + 20*positionRate + 10*aircraftCount)` normalized to percentiles; range calculated via haversine distance from aircraft positions in heartbeat payload
+3. **Rate Limiting:** Distributed rate limiting via Upstash Redis (fallback to in-memory), keyed by API key or IP, configurable per tier. Better Auth endpoints also rate-limited (10 req/60s).
+4. **Install Scripts:** Personalized bash scripts generated per-feeder with embedded UUID, use enrollment token for initial registration
+5. **Enrollment Token Flow:** Single-use tokens with 1-hour expiry for Pi self-registration, exchanged for heartbeat token on `/api/v1/feeders/[uuid]/enroll`
+6. **Aircraft Data Pipeline:** readsb aggregates feeds → tar1090 JSON → Next.js API → clients
+7. **Emergency Squawk Detection:** Aircraft with squawk 7500 (hijack), 7600 (radio failure), or 7700 (emergency) get color override, enlarged icons, pulsing rings, and info panel banners
+8. **Server-Side Deduplication:** `React.cache()` wraps `getServerSession` and `fetchAircraftData` to prevent redundant calls within a single request
+9. **Parallel Database Queries:** Stats and heartbeat routes use `Promise.all()` for independent queries
+10. **Bundle Optimization:** Heavy libraries (mapbox-gl, recharts) loaded via `next/dynamic` with SSR disabled; `optimizePackageImports` eliminates barrel file costs
+11. **Map Performance:** SWR for data polling, `requestAnimationFrame` for animations via Mapbox API (no React state churn), stable callbacks via refs, `content-visibility: auto` on list items, polling-based custom icon loading (avoids `onLoad` timing issues with dynamic imports), canvas-rendered SDF aircraft type icons (jet/turboprop/helicopter/light/generic) with per-feature icon selection via Mapbox expressions
+12. **Accessibility:** WCAG-compliant with aria-hidden on decorative icons, aria-labels on controls, skip-nav links, proper focus indicators, reduced-motion support, semantic form attributes, map container `role="application"`, stats `aria-live="polite"`, playback controls `role="group"` with `aria-valuetext`, and focus-visible styles on interactive elements
+13. **Shared Utilities:** `lib/fetcher.ts` (SWR fetcher with error handling) and `lib/format.ts` (number formatting) prevent code duplication
+14. **Historical Playback:** Position snapshots stored every ~10s by external recorder script; map UI loads time ranges and interpolates aircraft positions between snapshots using requestAnimationFrame; heading interpolation uses shortest-arc (360/0 boundary); SWR polling paused during playback; throttled setCurrentTime to ~12-15fps; direct Mapbox source updates bypass React state at 60fps
+15. **Internal API Security:** `/api/internal/history-snapshot` requires `INTERNAL_CRON_SECRET` header (timing-safe comparison); POST-only (GET removed for CSRF prevention); readsb data validated before DB insert (hex format, lat/lon ranges)
+16. **Playback Performance:** Direct Mapbox `getSource().setData()` calls during playback avoid React re-renders; O(n) Set-based interpolation lookup replaces O(n^2) array scan; pulse animations gated on emergency count; trail points capped at 2000 during playback; version counter ref replaces playbackTime in memo deps
+17. **Data Validation:** History queries enforce `from < to`, max 60-minute range, valid hex codes, and `take: 100000` safety limit; feeder heartbeat validates hex format and coordinate ranges before insert
+18. **Feeder Scoring:** Composite 0-100 score calculated hourly using formula: `(40*uptime + 30*messageRate + 20*positionRate + 10*aircraftCount)` normalized to percentiles; range calculated via haversine distance from aircraft positions in heartbeat payload
+19. **Error Tracking:** Sentry integration for client, server, and edge runtime with custom error contexts and filtering
+20. **Worker Database Scaling:** Optional `WORKER_DATABASE_URL` for dedicated connection pool in background worker processes (stats, history, cleanup, segmenter)
+21. **Health Checks:** `/api/health` endpoint (no auth) for Kubernetes/Dokploy readiness verification
 
 ---
 
@@ -219,10 +232,21 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 READSB_JSON_URL=http://localhost:8080/data/aircraft.json
 NEXT_PUBLIC_MAPBOX_TOKEN=<mapbox token>
 
+# Rate Limiting
+UPSTASH_REDIS_REST_URL=<upstash redis url>
+UPSTASH_REDIS_REST_TOKEN=<upstash redis token>
+
+# Error Tracking
+NEXT_PUBLIC_SENTRY_DSN=<sentry dsn>
+SENTRY_AUTH_TOKEN=<sentry auth token>
+SENTRY_ORG=<sentry org slug>
+SENTRY_PROJECT=<sentry project slug>
+
 # Optional
 BEAST_PORT=30004
 INTERNAL_CRON_SECRET=<secret for history recorder>
 HISTORY_RETENTION_HOURS=24
+WORKER_DATABASE_URL=<separate connection pool for workers>
 ```
 
 ---
@@ -233,6 +257,8 @@ HISTORY_RETENTION_HOURS=24
 npm run dev              # Start dev server
 npm run build            # Production build
 npm run lint             # ESLint
+npm run test             # Run tests in watch mode
+npm run test:run         # Run tests once
 npm run db:push          # Sync Prisma schema to DB
 npm run db:migrate       # Create migration
 npm run db:studio        # Prisma Studio GUI
@@ -241,13 +267,14 @@ npx tsx scripts/stats-worker.ts         # Collect feeder stats hourly
 npx tsx scripts/history-recorder.ts     # Aircraft position recorder (10s interval)
 npx tsx scripts/history-cleanup.ts      # Clean old position data (hourly)
 npx tsx scripts/flight-segmenter.ts     # Detect flights from positions (5min interval)
+curl http://localhost:3000/api/health  # Health check endpoint
 ```
 
 ---
 
 ## 10. Remaining Work
 
-See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
+See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 9-12).
 
 **Phase 7 Complete:**
 - [x] Feeder scoring system (0-100 composite score from uptime, message rate, position rate, aircraft count)
@@ -263,13 +290,22 @@ See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
 - [x] Worker Dockerfile and PM2 ecosystem config for production deployment
 - [x] Development workers script for multi-worker testing
 
-**Immediate Priorities (Phase 8):**
+**Phase 8 Complete:**
+- [x] Redis-backed rate limiting via Upstash with in-memory fallback
+- [x] Sentry error tracking for client, server, and edge runtime
+- [x] Vitest test coverage with GitHub Actions CI
+- [x] Landing page redesign with animated stats and dark aviation theme
+- [x] Component refactoring (10 feeder, 7 map components)
+- [x] Enrollment token flow for secure Pi registration
+- [x] Connection pooling with worker database URL support
+- [x] Health check endpoint for deployment monitoring
+
+**Immediate Priorities (Phase 9):**
 - [ ] Regional leaderboard rankings (group feeders by region)
 - [ ] Advanced filtering on leaderboard (altitude range, squawk filtering)
 - [ ] Feeder comparison view (side-by-side stats for selected feeders)
 
 **Technical Debt:**
-- [ ] Redis-backed rate limiting (currently in-memory)
 - [ ] Gzip compression on API responses
 - [ ] IndexedDB caching for static data (airports, aircraft types)
 
@@ -280,4 +316,4 @@ See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
 
 ---
 
-*Last Updated: January 28, 2026 (Phase 7.5 Complete - Feeder Detail Page Improvements & Worker Infrastructure)*
+*Last Updated: January 28, 2026 (Phase 8 Complete - Infrastructure, Testing, Security)*

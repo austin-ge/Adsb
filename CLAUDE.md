@@ -3,7 +3,7 @@
 ## Project Overview
 HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 7.5 Complete (Feeder Detail Page Improvements & Worker Infrastructure), Phase 8 Planning
+**Status:** Phase 8 Complete (Infrastructure, Testing, Security), Phase 9 Planning
 **Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
 **Roadmap:** See `docs/ROADMAP.md` for full development plan based on FR24/RadarBox analysis
 
@@ -181,6 +181,13 @@ READSB_JSON_URL="http://localhost:8080/data/aircraft.json"
 NEXT_PUBLIC_MAPBOX_TOKEN="..."  # Mapbox GL JS token
 INTERNAL_CRON_SECRET="..."  # Secret for history recorder auth
 HISTORY_RETENTION_HOURS=24  # How long to keep position data (default: 24)
+UPSTASH_REDIS_REST_URL="..."  # Upstash Redis for distributed rate limiting
+UPSTASH_REDIS_REST_TOKEN="..."  # Upstash Redis auth token
+NEXT_PUBLIC_SENTRY_DSN="..."  # Sentry DSN for error tracking
+SENTRY_AUTH_TOKEN="..."  # Sentry auth token for build integration
+SENTRY_ORG="..."  # Sentry organization slug
+SENTRY_PROJECT="..."  # Sentry project slug
+WORKER_DATABASE_URL="postgresql://..."  # Optional: separate connection pool for workers
 ```
 
 ### Common Commands
@@ -189,6 +196,8 @@ HISTORY_RETENTION_HOURS=24  # How long to keep position data (default: 24)
 npm run dev              # Start dev server
 npm run build            # Production build
 npm run lint             # Run ESLint
+npm run test             # Run tests in watch mode
+npm run test:run         # Run tests once
 npm run workers          # Run all background workers (stats, history, cleanup, segmenter)
 
 # Database
@@ -205,6 +214,9 @@ npx tsx scripts/stats-worker.ts         # Collect feeder stats hourly
 npx tsx scripts/history-recorder.ts     # Save aircraft positions every 10s
 npx tsx scripts/history-cleanup.ts      # Remove old position data (hourly cron)
 npx tsx scripts/flight-segmenter.ts     # Detect flights from positions (every 5min cron)
+
+# Health check
+curl http://localhost:3000/api/health   # Deployment readiness check
 ```
 
 ### Project Structure
@@ -223,6 +235,7 @@ adsb/
 │   └── ui/                  # shadcn/ui
 ├── lib/                     # Utilities
 │   ├── prisma.ts            # Database client
+│   ├── prisma-worker.ts     # Worker-specific database connection pool
 │   ├── auth.ts              # Better Auth config (exports Session/User types)
 │   ├── auth-client.ts       # Better Auth React client
 │   ├── auth-server.ts       # Server session helpers (React.cache wrapped)
@@ -230,7 +243,8 @@ adsb/
 │   ├── fetcher.ts           # Shared SWR fetcher with error handling
 │   ├── format.ts            # Shared formatNumber utility
 │   ├── geo.ts               # Geo utilities (haversine distance calculation)
-│   └── api/                 # API middleware, rate limiting
+│   ├── sentry.ts            # Sentry error tracking utilities
+│   └── api/                 # API middleware (rate limiting, validation)
 ├── prisma/                  # Database schema
 ├── docker/
 │   └── aggregator/          # readsb + tar1090 Docker
@@ -243,7 +257,18 @@ adsb/
 │   ├── history-cleanup.ts   # Removes old position data (retention)
 │   └── flight-segmenter.ts  # Detects flights from positions, creates Flight records
 ├── docs/
-│   └── PLAN.md              # Original implementation plan
+│   ├── PLAN.md              # Original implementation plan
+│   ├── SPEC.md              # Project specification and architecture
+│   └── ROADMAP.md           # Development roadmap (Phases 1-12)
+├── __tests__/
+│   └── api/                 # API route tests (Vitest)
+├── sentry.client.config.ts  # Client-side error tracking setup
+├── sentry.server.config.ts  # Server-side error tracking setup
+├── sentry.edge.config.ts    # Edge runtime error tracking setup
+├── vitest.config.ts         # Vitest configuration for unit tests
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # GitHub Actions CI (build, lint, test)
 ├── Dockerfile               # Next.js production build
 ├── Dockerfile.worker        # Worker container for background jobs
 ├── docker-entrypoint-worker.sh  # Worker startup script
@@ -253,7 +278,7 @@ adsb/
 
 ### Database Models
 - **User** - Account with hashed API key (`apiKeyHash`), display prefix (`apiKeyPrefix`), and tier
-- **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location, score, max/avg range, uptime metrics)
+- **Feeder** - Pi device sending data (UUID, `heartbeatToken`, `enrollmentToken`, `enrollmentExpires`, stats, location, score, max/avg range, uptime metrics)
 - **FeederStats** - Historical statistics with scoring metrics (hourly snapshots: messages, positions, aircraftCount, score, maxRange, avgRange)
 - **AircraftPosition** - Historical aircraft position snapshots (hex, lat, lon, altitude, heading, speed, squawk, flight, timestamp)
 - **Flight** - Archived flight records with embedded positions JSON (hex, callsign, start/end times, stats, downsampled positions)
@@ -268,8 +293,9 @@ adsb/
 
 ### Key Patterns
 - API key via `x-api-key` header (hashed with SHA-256 for storage, looked up by hash)
-- Rate limiting in `lib/api/middleware.ts` (in-memory, per API key or IP)
+- Rate limiting via Upstash Redis (distributed) with in-memory fallback, per API key or IP
 - Heartbeat auth via `Authorization: Bearer <heartbeatToken>` (timing-safe comparison)
+- Enrollment token auth for initial Pi registration (1-hour expiry, single-use)
 - Internal API auth via `INTERNAL_CRON_SECRET` header (timing-safe comparison)
 - Aircraft data from tar1090 JSON endpoint
 - Feeders connect via readsb `--net-connector`
@@ -277,6 +303,9 @@ adsb/
 - Input validation: feeder names restricted to `[a-zA-Z0-9 _\-\.]`, max 64 chars
 - Historical playback: positions stored every ~10s, interpolated client-side at 60fps via requestAnimationFrame
 - Aircraft type icons: canvas-rendered SDF icons mapped from ICAO emitter category codes via Mapbox expressions
+- Error tracking: Sentry integration for client, server, and edge runtime with custom error contexts
+- Worker database connections: optional separate `WORKER_DATABASE_URL` for scaling heavy background jobs
+- Health checks: `/api/health` endpoint for deployment readiness verification
 
 ## Implementation Status
 
@@ -323,7 +352,17 @@ adsb/
 - [x] Worker Dockerfile and PM2 ecosystem config for production deployment
 - [x] Development workers script (`npm run workers`) for local multi-worker testing
 
-### Next Up (Phase 8)
+### Phase 8 Complete (Infrastructure, Testing, Security)
+- [x] Redis-backed rate limiting via Upstash with in-memory fallback
+- [x] Sentry error tracking for client, server, and edge runtime
+- [x] Vitest test coverage with GitHub Actions CI workflow
+- [x] Landing page redesign with animated stats and dark aviation theme
+- [x] Component refactoring (10 feeder, 7 map components)
+- [x] Enrollment token flow for secure Pi registration (1-hour expiry)
+- [x] Connection pooling with optional worker database URL
+- [x] Health check endpoint for deployment monitoring
+
+### Next Up (Phase 9)
 See [ROADMAP.md](docs/ROADMAP.md) for the full development plan.
 
 - [ ] Regional leaderboard rankings
@@ -364,4 +403,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 28, 2026 (Phase 7.5 Complete, Worker Infrastructure Added)
+**Last Updated:** January 28, 2026 (Phase 8 Complete - Infrastructure, Testing, Security)

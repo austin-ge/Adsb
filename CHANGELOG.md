@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Redis-backed rate limiting via Upstash with in-memory fallback for distributed request throttling
+- Sentry error tracking integration with `@sentry/nextjs` for client, server, and edge runtime
+- Test coverage with Vitest configuration and test suite in `__tests__/api/` directory
+- GitHub Actions CI workflow (`.github/workflows/ci.yml`) for automated testing and build validation
+- `npm run test` and `npm run test:run` scripts for running test suite
+- Global error boundary at `app/global-error.tsx` for catching and reporting unhandled errors to Sentry
+- Sentry configuration files: `sentry.client.config.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`
+- Sentry utility helpers at `lib/sentry.ts` for error tracking and reporting
+- Landing page redesign (`app/page.tsx`) with animated number counters, live stats from `/api/v1/stats`, and dark aviation theme
+- Component refactoring: extracted 10 feeder-specific components in `components/feeder/` directory
+- Component refactoring: extracted 7 map-specific components in `components/map/` directory
+- Feeder enrollment token flow with 1-hour expiry and single-use enforcement for secure Pi registration
+- New enrollment endpoint: `POST /api/v1/feeders/[uuid]/enroll` for Pi self-registration using enrollment tokens
+- New dashboard endpoint: `POST /api/feeders/[id]/regenerate-enrollment` for refreshing enrollment tokens
+- Enrollment token and expiry fields to Feeder model (`enrollmentToken`, `enrollmentExpires`)
+- Connection pooling support via `lib/prisma-worker.ts` for dedicated worker database connections
+- Optional `WORKER_DATABASE_URL` environment variable for worker process database scaling
+- Health check endpoint: `GET /api/health` for deployment monitoring and readiness verification
 - Share button on feeder detail page - copies feeder page URL to clipboard
 - 7-Day Summary table on feeder detail page - shows daily aggregated stats (messages, positions, aircraft count)
 - Nearby Airports section on feeder detail page - displays 5 closest airports with distances
@@ -49,9 +67,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - New airport data file at `public/data/airports.json` with 139 major airports worldwide
 
 ### Changed
+- Rate limiting is now async and properly distributed across multiple deployment instances via Upstash Redis
+- Install script now uses secure enrollment token instead of heartbeat token for initial Pi registration
 - Install script now includes aircraft positions in heartbeat payload for range calculation
 - Stats worker now calculates scoring metrics (uptime, message rate, position rate) hourly
 - Leaderboard default sort changed from messages received to composite score
+- Feeder page component reduced from 1,030 to 332 lines through component extraction
+- Map client component reduced from 1,280 to 1,006 lines through modular component decomposition
 
 ### Fixed
 - Hoisted empty GeoJSON FeatureCollection as module-level constant to avoid object allocation on every render when trails disabled
@@ -83,6 +105,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Map Layers panel reorganized: added Map Style section between Units and Theme sections
 
 ### Security
+- Enrollment token flow replaces direct heartbeat token usage in install script for enhanced feeder security
+- Enrollment tokens are single-use and expire after 1 hour to minimize compromise window
 - Auth bypass fixed on internal history-snapshot endpoint: requires `INTERNAL_CRON_SECRET` in production
 - Removed GET handler on `/api/internal/history-snapshot` write endpoint (CSRF prevention)
 - Timing-safe comparison for internal cron secret validation
