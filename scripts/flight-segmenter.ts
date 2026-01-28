@@ -24,6 +24,7 @@
  *   SEGMENTER_INTERVAL_MS - Interval between runs in loop mode (default: 300000 = 5 min)
  */
 
+import "dotenv/config";
 import { PrismaClient, Prisma } from "@prisma/client";
 
 const LOOKBACK_MINUTES = parseInt(process.env.LOOKBACK_MINUTES || "30");

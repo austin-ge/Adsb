@@ -12,6 +12,8 @@
  *   SNAPSHOT_INTERVAL_MS - Interval between snapshots in ms (default: 10000)
  */
 
+import "dotenv/config";
+
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 const INTERNAL_SECRET = process.env.INTERNAL_CRON_SECRET || "";
 const INTERVAL_MS = parseInt(process.env.SNAPSHOT_INTERVAL_MS || "10000");

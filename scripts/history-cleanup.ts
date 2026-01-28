@@ -13,6 +13,7 @@
  *   CLEANUP_INTERVAL_MS - Interval between runs in loop mode (default: 3600000 = 1 hour)
  */
 
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const RETENTION_HOURS = parseInt(process.env.HISTORY_RETENTION_HOURS || "24");
