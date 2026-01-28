@@ -260,6 +260,7 @@ export default function LeaderboardContent() {
                     variant={period === p.value ? "default" : "ghost"}
                     size="sm"
                     onClick={() => updateParams("period", p.value)}
+                    aria-pressed={period === p.value}
                   >
                     {p.label}
                   </Button>
@@ -272,6 +273,7 @@ export default function LeaderboardContent() {
                     variant={sortBy === s.value ? "default" : "ghost"}
                     size="sm"
                     onClick={() => updateParams("sort", s.value)}
+                    aria-pressed={sortBy === s.value}
                   >
                     {s.label}
                   </Button>

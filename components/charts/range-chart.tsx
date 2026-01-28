@@ -86,7 +86,7 @@ export function RangeChart({ data, unit = "nm" }: RangeChartProps) {
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" role="img" aria-label="Range history chart showing maximum and average range over time">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={chartData}

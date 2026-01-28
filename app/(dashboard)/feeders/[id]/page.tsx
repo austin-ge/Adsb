@@ -3,6 +3,7 @@
 import { useState, use, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import { formatNumber } from "@/lib/format";
@@ -36,7 +37,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UptimeChart } from "@/components/charts/uptime-chart";
-import { RangeChart } from "@/components/charts/range-chart";
+
+const RangeChart = dynamic(
+  () => import("@/components/charts/range-chart").then((mod) => mod.RangeChart),
+  { ssr: false, loading: () => <div className="h-48 animate-pulse bg-muted rounded" /> }
+);
 
 interface FeederStats {
   id: string;
@@ -664,21 +669,22 @@ export default function FeederDetailPage({
           {flightsData?.flights && flightsData.flights.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
+                <caption className="sr-only">Recent flights tracked by this feeder</caption>
                 <thead>
                   <tr className="border-b border-gray-700">
-                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                    <th scope="col" className="text-left py-2 px-2 font-medium text-muted-foreground">
                       Callsign
                     </th>
-                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                    <th scope="col" className="text-left py-2 px-2 font-medium text-muted-foreground">
                       Hex
                     </th>
-                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                    <th scope="col" className="text-left py-2 px-2 font-medium text-muted-foreground">
                       Date
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
                       Duration
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
                       Max Alt
                     </th>
                   </tr>
