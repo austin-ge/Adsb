@@ -3,7 +3,7 @@
 ## Project Overview
 HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 7 Complete (Feeder Dashboard Enhancement), Phase 8 Planning
+**Status:** Phase 7.5 Complete (Feeder Detail Page Improvements & Worker Infrastructure), Phase 8 Planning
 **Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
 **Roadmap:** See `docs/ROADMAP.md` for full development plan based on FR24/RadarBox analysis
 
@@ -189,6 +189,7 @@ HISTORY_RETENTION_HOURS=24  # How long to keep position data (default: 24)
 npm run dev              # Start dev server
 npm run build            # Production build
 npm run lint             # Run ESLint
+npm run workers          # Run all background workers (stats, history, cleanup, segmenter)
 
 # Database
 npx prisma migrate dev --name <name>
@@ -199,11 +200,11 @@ npx prisma studio
 docker build -t hangartrak-radar ./docker/aggregator
 docker run --name hangartrak-radar -p 30004:30004 -p 8080:80 hangartrak-radar
 
-# History recorder (saves aircraft positions every 10s)
-npx tsx scripts/history-recorder.ts
-
-# History cleanup (remove old position data)
-npx tsx scripts/history-cleanup.ts
+# Workers (can be run individually for debugging)
+npx tsx scripts/stats-worker.ts         # Collect feeder stats hourly
+npx tsx scripts/history-recorder.ts     # Save aircraft positions every 10s
+npx tsx scripts/history-cleanup.ts      # Remove old position data (hourly cron)
+npx tsx scripts/flight-segmenter.ts     # Detect flights from positions (every 5min cron)
 ```
 
 ### Project Structure
@@ -233,6 +234,8 @@ adsb/
 ├── prisma/                  # Database schema
 ├── docker/
 │   └── aggregator/          # readsb + tar1090 Docker
+│   ├── Dockerfile.worker    # Worker container for background jobs
+│   └── docker-entrypoint-worker.sh  # Worker startup script
 ├── scripts/
 │   ├── feeder-stats.sh      # Pi stats reporter template
 │   ├── stats-worker.ts      # Background stats collection
@@ -242,6 +245,9 @@ adsb/
 ├── docs/
 │   └── PLAN.md              # Original implementation plan
 ├── Dockerfile               # Next.js production build
+├── Dockerfile.worker        # Worker container for background jobs
+├── docker-entrypoint-worker.sh  # Worker startup script
+├── ecosystem.config.js      # PM2 config for worker processes (stats, history, cleanup, segmenter)
 └── CLAUDE.md                # This file
 ```
 
@@ -309,6 +315,14 @@ adsb/
 - [x] Uptime visualization (7-day chart on feeder detail page)
 - [x] Enhanced leaderboard (search, sort by score/range, ranking indicators)
 
+### Phase 7.5 Complete (Feeder Detail Page Improvements & Worker Infrastructure)
+- [x] Share button on feeder detail page (copies URL to clipboard)
+- [x] 7-Day Summary table on feeder detail page (daily aggregated stats)
+- [x] Nearby Airports section on feeder detail page (5 closest with distances)
+- [x] Monthly Summary card on feeder detail page
+- [x] Worker Dockerfile and PM2 ecosystem config for production deployment
+- [x] Development workers script (`npm run workers`) for local multi-worker testing
+
 ### Next Up (Phase 8)
 See [ROADMAP.md](docs/ROADMAP.md) for the full development plan.
 
@@ -350,4 +364,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 28, 2026 (Phase 7 Complete, Phase 8 Planning)
+**Last Updated:** January 28, 2026 (Phase 7.5 Complete, Worker Infrastructure Added)

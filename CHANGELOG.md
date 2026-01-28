@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Share button on feeder detail page - copies feeder page URL to clipboard
+- 7-Day Summary table on feeder detail page - shows daily aggregated stats (messages, positions, aircraft count)
+- Nearby Airports section on feeder detail page - displays 5 closest airports with distances
+- Monthly Summary card on feeder detail page - shows this month's aggregated statistics
+- `Dockerfile.worker` for running background workers as separate Dokploy service
+- `docker-entrypoint-worker.sh` for worker container startup and initialization
+- `ecosystem.config.js` for PM2 to manage 4 worker processes (stats-worker, history-recorder, history-cleanup, flight-segmenter)
+- `npm run workers` development script for running all workers concurrently using concurrently
+- Dotenv support in worker scripts for proper .env file loading in containerized environments
 - Feeder scoring system (0-100 composite score based on uptime, message rate, position rate, and aircraft count)
 - Range tracking (max range and 24-hour average calculated from heartbeat aircraft positions)
 - Feeder rankings with change indicators (↑↓ showing score movement)

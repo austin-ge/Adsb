@@ -146,7 +146,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 |-------|------------|
 | `/dashboard` | Overview with stats and feeder list |
 | `/feeders` | Manage feeders |
-| `/feeders/[id]` | Individual feeder detail with composite score (0-100), 7-day uptime chart, range history (max/avg), and recent flights |
+| `/feeders/[id]` | Individual feeder detail with composite score (0-100), 7-day uptime chart, range history (max/avg), recent flights, share button, 7-day summary table, nearby airports (5 closest with distances), and monthly summary card |
 | `/stats` | Network-wide statistics |
 | `/api-keys` | API key generation & management |
 
@@ -236,9 +236,11 @@ npm run lint             # ESLint
 npm run db:push          # Sync Prisma schema to DB
 npm run db:migrate       # Create migration
 npm run db:studio        # Prisma Studio GUI
-npm run worker           # Background stats worker
-npx tsx scripts/history-recorder.ts  # Aircraft position recorder (10s interval)
-npx tsx scripts/history-cleanup.ts   # Clean old position data
+npm run workers          # Run all background workers (stats, history, cleanup, segmenter)
+npx tsx scripts/stats-worker.ts         # Collect feeder stats hourly
+npx tsx scripts/history-recorder.ts     # Aircraft position recorder (10s interval)
+npx tsx scripts/history-cleanup.ts      # Clean old position data (hourly)
+npx tsx scripts/flight-segmenter.ts     # Detect flights from positions (5min interval)
 ```
 
 ---
@@ -252,6 +254,14 @@ See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
 - [x] Range tracking (max/avg range per feeder using haversine formula)
 - [x] Uptime visualization (7-day chart on feeder detail page)
 - [x] Enhanced leaderboard (score column, search, sort by score/range)
+
+**Phase 7.5 Complete:**
+- [x] Share button on feeder detail page (copies URL to clipboard)
+- [x] 7-Day Summary table with daily aggregated stats
+- [x] Nearby Airports section (5 closest airports with distances)
+- [x] Monthly Summary card with this month's aggregated statistics
+- [x] Worker Dockerfile and PM2 ecosystem config for production deployment
+- [x] Development workers script for multi-worker testing
 
 **Immediate Priorities (Phase 8):**
 - [ ] Regional leaderboard rankings (group feeders by region)
@@ -270,4 +280,4 @@ See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
 
 ---
 
-*Last Updated: January 28, 2026 (Phase 7 Complete)*
+*Last Updated: January 28, 2026 (Phase 7.5 Complete - Feeder Detail Page Improvements & Worker Infrastructure)*
