@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1
+FROM node:22-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (need devDependencies for tsx and prisma)
+RUN npm ci
+
+# Build stage - generate Prisma client
+FROM base AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY prisma ./prisma
+COPY scripts ./scripts
+COPY tsconfig.json ./
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Copy only what's needed for the worker
+COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=worker:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=worker:nodejs /app/scripts ./scripts
+COPY --chown=worker:nodejs package.json ./
+
+# Copy entrypoint script
+COPY --chown=worker:nodejs docker-entrypoint-worker.sh ./docker-entrypoint-worker.sh
+RUN chmod +x ./docker-entrypoint-worker.sh
+
+USER worker
+
+# Run the worker via entrypoint
+CMD ["./docker-entrypoint-worker.sh"]
