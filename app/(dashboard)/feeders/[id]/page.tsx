@@ -21,6 +21,9 @@ import {
   TrendingDown,
   Minus,
   Plane,
+  Share2,
+  Calendar,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +40,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UptimeChart } from "@/components/charts/uptime-chart";
+import { haversineDistanceNm } from "@/lib/geo";
+
+interface Airport {
+  icao: string;
+  iata: string;
+  name: string;
+  lat: number;
+  lon: number;
+}
 
 const RangeChart = dynamic(
   () => import("@/components/charts/range-chart").then((mod) => mod.RangeChart),
@@ -93,6 +105,22 @@ interface FlightsResponse {
   flights: Flight[];
 }
 
+interface DailyStats {
+  date: string;
+  dateKey: string;
+  messages: number;
+  positions: number;
+  aircraft: number;
+  avgScore: number;
+  uptimePercent: number;
+  isToday: boolean;
+}
+
+interface NearbyAirport {
+  icao: string;
+  name: string;
+  distance: number;
+}
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString(undefined, {
@@ -185,7 +213,12 @@ export default function FeederDetailPage({
     fetcher
   );
 
-  const [copiedItem, setCopiedItem] = useState<"uuid" | "command" | null>(null);
+  const { data: airports } = useSWR<Airport[]>(
+    feeder?.latitude && feeder?.longitude ? "/data/airports.json" : null,
+    fetcher
+  );
+
+  const [copiedItem, setCopiedItem] = useState<"uuid" | "command" | "share" | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -200,6 +233,107 @@ export default function FeederDetailPage({
     return [...feeder.stats].reverse();
   }, [feeder?.stats]);
 
+  // Aggregate hourly stats into 7 daily buckets
+  const dailyStats = useMemo((): DailyStats[] => {
+    if (!feeder?.stats || feeder.stats.length === 0) return [];
+
+    const today = new Date().toLocaleDateString(undefined, { dateStyle: "short" });
+    const buckets: Record<string, { messages: number; positions: number; aircraftMax: number; scores: number[]; hoursWithData: number }> = {};
+
+    for (const stat of feeder.stats) {
+      const date = new Date(stat.timestamp);
+      const dateKey = date.toLocaleDateString(undefined, { dateStyle: "short" });
+
+      if (!buckets[dateKey]) {
+        buckets[dateKey] = { messages: 0, positions: 0, aircraftMax: 0, scores: [], hoursWithData: 0 };
+      }
+
+      buckets[dateKey].messages += stat.messages;
+      buckets[dateKey].positions += stat.positions;
+      buckets[dateKey].aircraftMax = Math.max(buckets[dateKey].aircraftMax, stat.aircraft);
+      if (stat.uptimePercent !== null) {
+        buckets[dateKey].scores.push(stat.uptimePercent);
+      }
+      buckets[dateKey].hoursWithData += 1;
+    }
+
+    // Convert to array and sort by date (most recent first)
+    const result: DailyStats[] = Object.entries(buckets)
+      .map(([dateKey, data]) => ({
+        date: dateKey,
+        dateKey,
+        messages: data.messages,
+        positions: data.positions,
+        aircraft: data.aircraftMax,
+        avgScore: data.scores.length > 0
+          ? Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length)
+          : 0,
+        uptimePercent: Math.round((data.hoursWithData / 24) * 100),
+        isToday: dateKey === today,
+      }))
+      .sort((a, b) => {
+        // Parse dates for proper sorting
+        const dateA = new Date(a.dateKey);
+        const dateB = new Date(b.dateKey);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .slice(0, 7);
+
+    return result;
+  }, [feeder?.stats]);
+
+  // Calculate nearby airports
+  const nearbyAirports = useMemo((): NearbyAirport[] => {
+    if (!feeder?.latitude || !feeder?.longitude || !airports) return [];
+
+    const feederLat = feeder.latitude;
+    const feederLon = feeder.longitude;
+
+    return airports
+      .map((airport) => ({
+        icao: airport.icao,
+        name: airport.name,
+        distance: haversineDistanceNm(feederLat, feederLon, airport.lat, airport.lon),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 5);
+  }, [feeder?.latitude, feeder?.longitude, airports]);
+
+  // Monthly summary stats
+  const monthlySummary = useMemo(() => {
+    if (!feeder?.stats || feeder.stats.length === 0) return null;
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const monthStats = feeder.stats.filter((stat) => {
+      const statDate = new Date(stat.timestamp);
+      return statDate.getMonth() === currentMonth && statDate.getFullYear() === currentYear;
+    });
+
+    if (monthStats.length === 0) return null;
+
+    const totalMessages = monthStats.reduce((sum, s) => sum + s.messages, 0);
+    const totalPositions = monthStats.reduce((sum, s) => sum + s.positions, 0);
+    const maxAircraft = Math.max(...monthStats.map((s) => s.aircraft));
+    const uptimeScores = monthStats.filter((s) => s.uptimePercent !== null).map((s) => s.uptimePercent!);
+    const avgUptime = uptimeScores.length > 0
+      ? Math.round(uptimeScores.reduce((a, b) => a + b, 0) / uptimeScores.length)
+      : 0;
+
+    // Count unique days with data
+    const uniqueDays = new Set(monthStats.map((s) => new Date(s.timestamp).toDateString())).size;
+
+    return {
+      totalMessages,
+      totalPositions,
+      maxAircraft,
+      avgUptime,
+      daysActive: uniqueDays,
+    };
+  }, [feeder?.stats]);
+
   const handleCopyUuid = async () => {
     if (!feeder) return;
     await navigator.clipboard.writeText(feeder.uuid);
@@ -212,6 +346,12 @@ export default function FeederDetailPage({
     const command = `curl -sSL ${window.location.origin}/api/install/${feeder.uuid} | sudo bash`;
     await navigator.clipboard.writeText(command);
     setCopiedItem("command");
+    setTimeout(() => setCopiedItem(null), 2000);
+  };
+
+  const handleShare = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopiedItem("share");
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
@@ -320,6 +460,14 @@ export default function FeederDetailPage({
           Back to Feeders
         </Link>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleShare}>
+            {copiedItem === "share" ? (
+              <Check className="mr-2 h-4 w-4 text-green-500" aria-hidden="true" />
+            ) : (
+              <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
+            )}
+            {copiedItem === "share" ? "Copied!" : "Share"}
+          </Button>
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" onClick={handleOpenEdit}>
@@ -532,6 +680,40 @@ export default function FeederDetailPage({
             </p>
           </CardContent>
         </Card>
+        {monthlySummary && (
+          <Card className="col-span-2 md:col-span-3 lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                This Month
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Messages</span>
+                  <span className="font-mono tabular-nums">{formatNumber(monthlySummary.totalMessages)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Positions</span>
+                  <span className="font-mono tabular-nums">{formatNumber(monthlySummary.totalPositions)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Max Aircraft</span>
+                  <span className="font-mono tabular-nums">{monthlySummary.maxAircraft}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Avg Uptime</span>
+                  <span className="font-mono tabular-nums">{monthlySummary.avgUptime}%</span>
+                </div>
+                <div className="flex justify-between col-span-2">
+                  <span className="text-muted-foreground">Days Active</span>
+                  <span className="font-mono tabular-nums">{monthlySummary.daysActive}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Feeder Details */}
@@ -657,6 +839,40 @@ export default function FeederDetailPage({
         </div>
       )}
 
+      {/* Nearby Airports */}
+      {nearbyAirports.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" aria-hidden="true" />
+              Nearby Airports
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              {nearbyAirports.map((airport) => (
+                <div
+                  key={airport.icao}
+                  className="flex items-center justify-between py-1.5 border-b border-gray-800 last:border-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <code className="font-mono text-sm bg-muted px-1.5 py-0.5 rounded shrink-0">
+                      {airport.icao}
+                    </code>
+                    <span className="text-sm text-muted-foreground truncate">
+                      {airport.name}
+                    </span>
+                  </div>
+                  <span className="font-mono text-sm tabular-nums shrink-0 ml-2">
+                    {airport.distance.toFixed(1)} nm
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recent Flights Section */}
       <Card>
         <CardHeader>
@@ -725,29 +941,86 @@ export default function FeederDetailPage({
         </CardContent>
       </Card>
 
-      {/* Historical Stats */}
-      {feeder.stats && feeder.stats.length > 0 && (
+      {/* 7-Day Summary */}
+      {dailyStats.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" aria-hidden="true" />
+              7-Day Summary
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {feeder.stats.slice(0, 10).map((stat) => (
-                <div
-                  key={stat.id}
-                  className="flex items-center justify-between text-sm py-2 border-b last:border-0"
-                >
-                  <span className="text-muted-foreground">
-                    {new Date(stat.timestamp).toLocaleString()}
-                  </span>
-                  <div className="flex gap-4">
-                    <span>{stat.messages.toLocaleString()} msgs</span>
-                    <span>{stat.positions.toLocaleString()} pos</span>
-                    <span>{stat.aircraft} aircraft</span>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="sr-only">Feeder statistics for the past 7 days</caption>
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th scope="col" className="text-left py-2 px-2 font-medium text-muted-foreground">
+                      Date
+                    </th>
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Messages
+                    </th>
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Positions
+                    </th>
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Aircraft
+                    </th>
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Avg Score
+                    </th>
+                    <th scope="col" className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Uptime
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyStats.map((day) => (
+                    <tr
+                      key={day.dateKey}
+                      className={`border-b border-gray-800 last:border-0 transition-colors ${
+                        day.isToday ? "bg-blue-500/10" : "hover:bg-gray-800/50"
+                      }`}
+                    >
+                      <td className="py-2 px-2">
+                        <span className={day.isToday ? "font-medium" : ""}>
+                          {day.date}
+                          {day.isToday && (
+                            <span className="ml-1.5 text-xs text-blue-400">(Today)</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums">
+                        {formatNumber(day.messages)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums">
+                        {formatNumber(day.positions)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums">
+                        {day.aircraft}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums">
+                        {day.avgScore}%
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono tabular-nums">
+                        <span
+                          className={
+                            day.uptimePercent >= 90
+                              ? "text-green-500"
+                              : day.uptimePercent >= 50
+                                ? "text-amber-400"
+                                : "text-red-500"
+                          }
+                        >
+                          {day.uptimePercent}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
