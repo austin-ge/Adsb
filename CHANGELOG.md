@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Feeder scoring system (0-100 composite score based on uptime, message rate, position rate, and aircraft count)
+- Range tracking (max range and 24-hour average calculated from heartbeat aircraft positions)
+- Feeder rankings with change indicators (↑↓ showing score movement)
+- 7-day uptime visualization chart on feeder detail page
+- Range history chart (max range and average range) on feeder detail page
+- Recent flights section on feeder detail page
+- Leaderboard search functionality (filter feeders by name)
+- Leaderboard sort by score, max range, and average range
+- Score and max range columns on leaderboard display
+- Geo utility library (lib/geo.ts) with haversine distance calculation for range determination
 - `browser-tester` review agent for visual testing with screenshots, interaction checks, and console error detection (uses `agent-browser` skill)
 - Three-layer Claude workflow: Skills → Review Agents → Task Subagents (optimized for context efficiency)
 - Installed `agent-browser` CLI globally for browser automation
@@ -28,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Airport markers layer showing major airports with ICAO codes on the map (toggleable via Map Layers panel)
 - Map style selector with 4 options: Streets, Satellite, Dark, Light (independent from UI theme)
 - New airport data file at `public/data/airports.json` with 139 major airports worldwide
+
+### Changed
+- Install script now includes aircraft positions in heartbeat payload for range calculation
+- Stats worker now calculates scoring metrics (uptime, message rate, position rate) hourly
+- Leaderboard default sort changed from messages received to composite score
 
 ### Fixed
 - Hoisted empty GeoJSON FeatureCollection as module-level constant to avoid object allocation on every render when trails disabled

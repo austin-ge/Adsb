@@ -20,7 +20,17 @@ export async function GET(request: Request, { params }: RouteParams) {
       include: {
         stats: {
           orderBy: { timestamp: "desc" },
-          take: 24, // Last 24 hours of stats
+          take: 168, // Last 7 days of hourly stats (168 hours)
+          select: {
+            id: true,
+            timestamp: true,
+            messages: true,
+            positions: true,
+            aircraft: true,
+            maxRange: true,
+            avgRange: true,
+            uptimePercent: true,
+          },
         },
       },
     });

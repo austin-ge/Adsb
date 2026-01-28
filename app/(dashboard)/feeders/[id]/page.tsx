@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -14,6 +14,12 @@ import {
   Settings,
   Radio,
   MapPin,
+  Trophy,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Plane,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +35,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UptimeChart } from "@/components/charts/uptime-chart";
+import { RangeChart } from "@/components/charts/range-chart";
 
 interface FeederStats {
   id: string;
@@ -36,6 +44,9 @@ interface FeederStats {
   messages: number;
   positions: number;
   aircraft: number;
+  maxRange: number | null;
+  avgRange: number | null;
+  uptimePercent: number | null;
 }
 
 interface Feeder {
@@ -53,6 +64,28 @@ interface Feeder {
   createdAt: string;
   updatedAt: string;
   stats: FeederStats[];
+  // Scoring fields
+  currentScore: number;
+  currentRank: number | null;
+  previousRank: number | null;
+  // Range fields
+  maxRangeNm: number | null;
+  avgRangeNm24h: number | null;
+}
+
+interface Flight {
+  id: string;
+  hex: string;
+  callsign: string | null;
+  startTime: string;
+  endTime: string;
+  maxAltitude: number | null;
+  totalDistance: number | null;
+  durationSecs: number;
+}
+
+interface FlightsResponse {
+  flights: Flight[];
 }
 
 
@@ -93,6 +126,42 @@ function formatSoftwareType(softwareType: string | null): string | null {
   return softwareNames[softwareType] || softwareType;
 }
 
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatFlightDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getRankChangeIndicator(
+  currentRank: number | null,
+  previousRank: number | null
+): { icon: typeof TrendingUp; color: string; label: string } | null {
+  if (currentRank === null || previousRank === null) {
+    return null;
+  }
+  if (previousRank > currentRank) {
+    // Rank improved (lower is better)
+    return { icon: TrendingUp, color: "text-green-500", label: "Rank improved" };
+  }
+  if (previousRank < currentRank) {
+    // Rank dropped
+    return { icon: TrendingDown, color: "text-red-500", label: "Rank dropped" };
+  }
+  return { icon: Minus, color: "text-gray-400", label: "Rank unchanged" };
+}
+
 export default function FeederDetailPage({
   params,
 }: {
@@ -106,7 +175,12 @@ export default function FeederDetailPage({
     mutate,
   } = useSWR<Feeder>(`/api/feeders/${resolvedParams.id}`, fetcher);
 
-  const [copied, setCopied] = useState(false);
+  const { data: flightsData } = useSWR<FlightsResponse>(
+    feeder ? `/api/feeders/${resolvedParams.id}/flights` : null,
+    fetcher
+  );
+
+  const [copiedItem, setCopiedItem] = useState<"uuid" | "command" | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -115,19 +189,25 @@ export default function FeederDetailPage({
   const [editLat, setEditLat] = useState("");
   const [editLng, setEditLng] = useState("");
 
+  // Memoize reversed stats to avoid creating new arrays on each render
+  const reversedStats = useMemo(() => {
+    if (!feeder?.stats) return [];
+    return [...feeder.stats].reverse();
+  }, [feeder?.stats]);
+
   const handleCopyUuid = async () => {
     if (!feeder) return;
     await navigator.clipboard.writeText(feeder.uuid);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedItem("uuid");
+    setTimeout(() => setCopiedItem(null), 2000);
   };
 
   const handleCopyCommand = async () => {
     if (!feeder) return;
     const command = `curl -sSL ${window.location.origin}/api/install/${feeder.uuid} | sudo bash`;
     await navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedItem("command");
+    setTimeout(() => setCopiedItem(null), 2000);
   };
 
   const handleOpenEdit = () => {
@@ -343,7 +423,64 @@ export default function FeederDetailPage({
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+              Score
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">{feeder.currentScore}</p>
+              {feeder.currentRank !== null && (
+                <span className="text-sm text-muted-foreground">
+                  #{feeder.currentRank}
+                </span>
+              )}
+              {(() => {
+                const rankChange = getRankChangeIndicator(
+                  feeder.currentRank,
+                  feeder.previousRank
+                );
+                if (!rankChange) return null;
+                const ChangeIcon = rankChange.icon;
+                return (
+                  <ChangeIcon
+                    className={`h-4 w-4 ${rankChange.color}`}
+                    aria-label={rankChange.label}
+                  />
+                );
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+        {(feeder.latitude !== null && feeder.longitude !== null) && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                Range
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col">
+                <p className="text-2xl font-bold">
+                  {feeder.maxRangeNm !== null
+                    ? `${feeder.maxRangeNm.toFixed(1)} nm`
+                    : "--"}
+                </p>
+                <span className="text-xs text-muted-foreground">
+                  Avg 24h:{" "}
+                  {feeder.avgRangeNm24h !== null
+                    ? `${feeder.avgRangeNm24h.toFixed(1)} nm`
+                    : "--"}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -409,7 +546,7 @@ export default function FeederDetailPage({
                   {feeder.uuid}
                 </code>
                 <Button size="sm" variant="ghost" onClick={handleCopyUuid} aria-label="Copy UUID">
-                  {copied ? (
+                  {copiedItem === "uuid" ? (
                     <Check className="h-4 w-4 text-green-500" />
                   ) : (
                     <Copy className="h-4 w-4" />
@@ -456,7 +593,7 @@ export default function FeederDetailPage({
                 onClick={handleCopyCommand}
                 aria-label="Copy install command"
               >
-                {copied ? (
+                {copiedItem === "command" ? (
                   <Check className="h-4 w-4 text-green-500" />
                 ) : (
                   <Copy className="h-4 w-4" />
@@ -470,6 +607,117 @@ export default function FeederDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Charts Section */}
+      {feeder.stats && feeder.stats.length > 0 && (
+        <div
+          className={`grid gap-6 ${
+            feeder.latitude !== null && feeder.longitude !== null
+              ? "md:grid-cols-2"
+              : "md:grid-cols-1"
+          }`}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">7-Day Uptime</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <UptimeChart
+                data={reversedStats.map((stat) => ({
+                  timestamp: stat.timestamp,
+                  uptimePercent: stat.uptimePercent,
+                }))}
+              />
+            </CardContent>
+          </Card>
+          {feeder.latitude !== null && feeder.longitude !== null && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Range History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-48">
+                  <RangeChart
+                    data={reversedStats.map((stat) => ({
+                      timestamp: stat.timestamp,
+                      maxRange: stat.maxRange,
+                      avgRange: stat.avgRange,
+                    }))}
+                    unit="nm"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Recent Flights Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plane className="h-5 w-5" aria-hidden="true" />
+            Recent Flights
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {flightsData?.flights && flightsData.flights.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                      Callsign
+                    </th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                      Hex
+                    </th>
+                    <th className="text-left py-2 px-2 font-medium text-muted-foreground">
+                      Date
+                    </th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Duration
+                    </th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">
+                      Max Alt
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {flightsData.flights.map((flight) => (
+                    <tr
+                      key={flight.id}
+                      className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50 transition-colors"
+                    >
+                      <td className="py-2 px-2 font-mono">
+                        {flight.callsign || "--"}
+                      </td>
+                      <td className="py-2 px-2 font-mono text-muted-foreground">
+                        {flight.hex.toUpperCase()}
+                      </td>
+                      <td className="py-2 px-2 text-muted-foreground">
+                        {formatFlightDate(flight.endTime)}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {formatDuration(flight.durationSecs)}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {flight.maxAltitude !== null
+                          ? `${flight.maxAltitude.toLocaleString()} ft`
+                          : "--"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No flight data yet
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Historical Stats */}
       {feeder.stats && feeder.stats.length > 0 && (

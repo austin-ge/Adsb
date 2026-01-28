@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/api/rate-limit";
+import { haversineDistanceNm } from "@/lib/geo";
 
 interface RouteParams {
   params: Promise<{ uuid: string }>;
@@ -29,11 +30,12 @@ interface HeartbeatPayload {
   rssi?: number;
   rssi_min?: number;
   rssi_max?: number;
-  // From aircraft.json
+  // From aircraft.json - includes position data for range calculation
   aircraft?: Array<{
     hex: string;
+    lat?: number;
+    lon?: number;
     rssi?: number;
-    [key: string]: unknown;
   }>;
   // Optional metadata
   version?: string;
@@ -106,7 +108,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // Calculate stats from payload with bounds checking
   const aircraftCount = Math.max(0, Math.min(10000, payload.aircraft_count ?? payload.aircraft?.length ?? 0));
-  const _aircraftWithPos = Math.max(0, Math.min(10000, payload.aircraft_with_pos ?? 0));
   const messages = Math.max(0, Math.min(1000000, payload.messages ?? 0));
   const positions = Math.max(0, Math.min(1000000, payload.positions ?? 0));
 
@@ -130,10 +131,64 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     validatedSoftwareType = payload.softwareType as SoftwareType;
   }
 
+  // Calculate range statistics if feeder has location and aircraft have positions
+  let maxDistanceThisHeartbeat: number | null = null;
+  let avgDistanceThisHeartbeat: number | null = null;
+
+  if (
+    feeder.latitude != null &&
+    feeder.longitude != null &&
+    payload.aircraft &&
+    payload.aircraft.length > 0
+  ) {
+    const validDistances: number[] = [];
+
+    for (const ac of payload.aircraft) {
+      if (ac.lat != null && ac.lon != null) {
+        const distance = haversineDistanceNm(
+          feeder.latitude,
+          feeder.longitude,
+          ac.lat,
+          ac.lon
+        );
+        // Filter out unrealistic distances (>500nm is likely bad data)
+        if (distance >= 0 && distance <= 500) {
+          validDistances.push(distance);
+        }
+      }
+    }
+
+    if (validDistances.length > 0) {
+      maxDistanceThisHeartbeat = Math.max(...validDistances);
+      avgDistanceThisHeartbeat =
+        validDistances.reduce((sum, d) => sum + d, 0) / validDistances.length;
+    }
+  }
+
   try {
     // Determine if we should update softwareType (first heartbeat wins)
     const shouldUpdateSoftwareType =
       validatedSoftwareType && !feeder.softwareType;
+
+    // Calculate range updates
+    // Update maxRangeNm if new max is greater than current (or if current is null)
+    const newMaxRange =
+      maxDistanceThisHeartbeat != null &&
+      (feeder.maxRangeNm == null || maxDistanceThisHeartbeat > feeder.maxRangeNm)
+        ? maxDistanceThisHeartbeat
+        : undefined;
+
+    // Update avgRangeNm24h using exponential moving average
+    // newAvg = oldAvg * 0.95 + currentAvg * 0.05
+    let newAvgRange: number | undefined;
+    if (avgDistanceThisHeartbeat != null) {
+      if (feeder.avgRangeNm24h != null) {
+        newAvgRange = feeder.avgRangeNm24h * 0.95 + avgDistanceThisHeartbeat * 0.05;
+      } else {
+        // First measurement, use current average as starting point
+        newAvgRange = avgDistanceThisHeartbeat;
+      }
+    }
 
     // Update feeder stats and auto-upgrade user tier in parallel
     const [updatedFeeder] = await Promise.all([
@@ -152,6 +207,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           ...(shouldUpdateSoftwareType && {
             softwareType: validatedSoftwareType,
           }),
+          ...(newMaxRange !== undefined && { maxRangeNm: newMaxRange }),
+          ...(newAvgRange !== undefined && { avgRangeNm24h: newAvgRange }),
         },
       }),
       feeder.user.apiTier === "FREE"

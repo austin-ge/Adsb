@@ -3,7 +3,7 @@
 ## Project Overview
 HangarTrak Radar is the community-powered ADS-B feeder network that powers aircraft tracking for [HangarTrak](https://hangartrak.com). It receives ADS-B data feeds from Raspberry Pi devices running readsb, displays live aircraft on a tar1090 map, and provides an API that HangarTrak uses instead of relying on third-party services like adsb.lol.
 
-**Status:** Phase 6 Complete, Phase 7 Planning (Feeder Dashboard Enhancement)
+**Status:** Phase 7 Complete (Feeder Dashboard Enhancement), Phase 8 Planning
 **Goal:** Replace adsb.lol dependency in HangarTrak with our own feeder network
 **Roadmap:** See `docs/ROADMAP.md` for full development plan based on FR24/RadarBox analysis
 
@@ -228,6 +228,7 @@ adsb/
 │   ├── readsb.ts            # Aircraft data fetching (React.cache wrapped)
 │   ├── fetcher.ts           # Shared SWR fetcher with error handling
 │   ├── format.ts            # Shared formatNumber utility
+│   ├── geo.ts               # Geo utilities (haversine distance calculation)
 │   └── api/                 # API middleware, rate limiting
 ├── prisma/                  # Database schema
 ├── docker/
@@ -246,8 +247,8 @@ adsb/
 
 ### Database Models
 - **User** - Account with hashed API key (`apiKeyHash`), display prefix (`apiKeyPrefix`), and tier
-- **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location)
-- **FeederStats** - Historical statistics (hourly snapshots)
+- **Feeder** - Pi device sending data (UUID, `heartbeatToken`, stats, location, score, max/avg range, uptime metrics)
+- **FeederStats** - Historical statistics with scoring metrics (hourly snapshots: messages, positions, aircraftCount, score, maxRange, avgRange)
 - **AircraftPosition** - Historical aircraft position snapshots (hex, lat, lon, altitude, heading, speed, squawk, flight, timestamp)
 - **Flight** - Archived flight records with embedded positions JSON (hex, callsign, start/end times, stats, downsampled positions)
 - **Session/Account/Verification** - Better Auth tables
@@ -302,13 +303,18 @@ adsb/
 - [x] Airport markers with ICAO codes
 - [x] Map style selector (streets/satellite/dark)
 
-### Next Up (Phase 7 - Feeder Dashboard)
+### Phase 7 Complete (Feeder Dashboard Enhancement)
+- [x] Feeder scoring system (0-100 composite score based on uptime, message rate, position rate, aircraft count)
+- [x] Range tracking (max range and 24h average per feeder using haversine distance)
+- [x] Uptime visualization (7-day chart on feeder detail page)
+- [x] Enhanced leaderboard (search, sort by score/range, ranking indicators)
+
+### Next Up (Phase 8)
 See [ROADMAP.md](docs/ROADMAP.md) for the full development plan.
 
-- [ ] Feeder scoring system (composite score)
-- [ ] Range tracking (max/avg per feeder)
-- [ ] Uptime visualization (7-day chart)
-- [ ] Enhanced leaderboard (regional rankings, search)
+- [ ] Regional leaderboard rankings
+- [ ] Advanced filtering on leaderboard (by region, altitude range, squawk)
+- [ ] Feeder comparison view (side-by-side stats)
 
 ### Future Map Enhancements
 - [ ] MLAT vs ADS-B indicators
@@ -344,4 +350,4 @@ GET /api/v1/history?from=&to=     - Historical positions (max 60 min range)
 When cutting a release, move `[Unreleased]` entries to a new versioned section.
 
 ---
-**Last Updated:** January 25, 2026 (Phase 6 Complete, Phase 7 Planning)
+**Last Updated:** January 28, 2026 (Phase 7 Complete, Phase 8 Planning)

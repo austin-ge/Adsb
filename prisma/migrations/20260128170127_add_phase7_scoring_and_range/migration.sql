@@ -1,0 +1,14 @@
+-- AlterTable
+ALTER TABLE "Feeder" ADD COLUMN     "avgRangeNm24h" DOUBLE PRECISION,
+ADD COLUMN     "currentRank" INTEGER,
+ADD COLUMN     "currentScore" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "maxRangeNm" DOUBLE PRECISION,
+ADD COLUMN     "previousRank" INTEGER;
+
+-- AlterTable
+ALTER TABLE "FeederStats" ADD COLUMN     "avgRange" DOUBLE PRECISION,
+ADD COLUMN     "maxRange" DOUBLE PRECISION,
+ADD COLUMN     "messageRate" DOUBLE PRECISION,
+ADD COLUMN     "positionRate" DOUBLE PRECISION,
+ADD COLUMN     "score" INTEGER,
+ADD COLUMN     "uptimePercent" DOUBLE PRECISION;

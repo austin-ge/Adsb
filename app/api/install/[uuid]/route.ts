@@ -482,6 +482,7 @@ fi
 echo "Stats Reporter: UUID=\$UUID JSON=\$JSON_DIR SOFTWARE=\$SOFTWARE_TYPE"
 
 STATS_FILE="\${JSON_DIR}/stats.json"
+AIRCRAFT_FILE="\${JSON_DIR}/aircraft.json"
 PREV_MESSAGES=0
 PREV_POSITIONS=0
 
@@ -510,14 +511,21 @@ while true; do
         PREV_MESSAGES=\$MESSAGES
         PREV_POSITIONS=\$POSITIONS
 
+        # Extract aircraft positions for range calculation (up to 50 aircraft with positions)
+        AIRCRAFT_JSON='[]'
+        if [ -f "\$AIRCRAFT_FILE" ]; then
+            AIRCRAFT_JSON=\$(jq -c '[.aircraft[] | select(.lat != null) | {hex: .hex, lat: .lat, lon: .lon}] | .[0:50]' "\$AIRCRAFT_FILE" 2>/dev/null || echo '[]')
+        fi
+
         PAYLOAD=\$(jq -n \\
             --arg uuid "\$UUID" \\
             --argjson now "\$NOW" \\
-            --argjson aircraft "\$AIRCRAFT" \\
+            --argjson aircraft_with_pos "\$AIRCRAFT" \\
             --argjson messages "\$MSG_DELTA" \\
             --argjson positions "\$POS_DELTA" \\
             --arg softwareType "\$SOFTWARE_TYPE" \\
-            '{uuid: \$uuid, now: \$now, aircraft_with_pos: \$aircraft, messages: \$messages, positions: \$positions, softwareType: \$softwareType}')
+            --argjson aircraft "\$AIRCRAFT_JSON" \\
+            '{uuid: \$uuid, now: \$now, aircraft_with_pos: \$aircraft_with_pos, messages: \$messages, positions: \$positions, softwareType: \$softwareType, aircraft: \$aircraft}')
     else
         AIRCRAFT=\$(grep -oP '"aircraft_with_pos"\\s*:\\s*\\K\\d+' "\$STATS_FILE" 2>/dev/null || echo "0")
         PAYLOAD="{\"uuid\":\"\$UUID\",\"now\":\$NOW,\"aircraft_with_pos\":\$AIRCRAFT,\"messages\":0,\"positions\":0,\"softwareType\":\"\$SOFTWARE_TYPE\"}"

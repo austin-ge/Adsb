@@ -96,12 +96,17 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 - heartbeatToken (unique) - Bearer token for authenticating heartbeat requests
 - isOnline, lastSeen
 - messagesTotal, positionsTotal, aircraftSeen
+- score (0-100) - Composite score based on uptime, message rate, position rate, aircraft count
+- maxRange, avgRange - Range metrics calculated from aircraft positions
 - userId (foreign key)
 - Relations: stats[]
 
 **FeederStats**
 - id, feederId (foreign key)
 - messages, positions, aircraftCount
+- score (0-100) - Composite score at this snapshot
+- maxRange, avgRange - Range metrics at this snapshot
+- uptime (0-100) - Uptime percentage calculated hourly
 - timestamp (indexed)
 
 **AircraftPosition**
@@ -133,7 +138,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | `/login` | User login |
 | `/register` | User registration |
 | `/map` | Live aircraft map (Mapbox) with altitude coloring, canvas-rendered SDF aircraft type icons (jet/turboprop/helicopter/light/generic from ICAO emitter category), flight trails, emergency squawk highlighting, aircraft list sidebar (sortable, searchable, collapsible), historical playback (timeline slider, play/pause, 1x/2x/5x/10x speed, smooth interpolation with heading-aware rotation) |
-| `/leaderboard` | Top feeders ranked by contribution (period/sort synced to URL params) |
+| `/leaderboard` | Top feeders ranked by composite score (0-100) with filters, search, and sort by score/max range/avg range |
 | `/docs/api` | API documentation |
 
 ### Dashboard Pages (authenticated)
@@ -141,7 +146,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 |-------|------------|
 | `/dashboard` | Overview with stats and feeder list |
 | `/feeders` | Manage feeders |
-| `/feeders/[id]` | Individual feeder detail & stats |
+| `/feeders/[id]` | Individual feeder detail with composite score (0-100), 7-day uptime chart, range history (max/avg), and recent flights |
 | `/stats` | Network-wide statistics |
 | `/api-keys` | API key generation & management |
 
@@ -158,7 +163,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | GET | `/stats` | API Key | Network statistics |
 | GET | `/history` | API Key | Historical positions (params: from, to, hex) |
 | GET | `/feeders` | API Key | Feeder list (location restricted by tier) |
-| POST | `/feeders/[uuid]/heartbeat` | Bearer token | Feeder stats reporting (rate limited: 10/min) |
+| POST | `/feeders/[uuid]/heartbeat` | Bearer token | Feeder stats reporting with aircraft positions (rate limited: 10/min) |
 | GET | `/feeders/[uuid]/heartbeat` | None | Feeder status check |
 
 **Aircraft Filters:** bounds (N/S/E/W), altitude range, callsign
@@ -173,7 +178,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 | GET/DELETE | `/api/feeders/[id]` | Manage feeder |
 | POST | `/api/user/api-key` | Generate API key |
 | GET | `/api/install/[uuid]` | Personalized Pi install script |
-| GET | `/api/leaderboard` | Leaderboard data |
+| GET | `/api/leaderboard` | Leaderboard data (params: sort=score|maxRange|avgRange, search, limit) |
 | GET | `/api/stats` | Network stats |
 | GET | `/api/map/aircraft` | Aircraft for map visualization |
 | GET | `/api/map/history` | Historical positions for map playback (params: from, to) |
@@ -199,6 +204,7 @@ Each Pi runs a stats reporter that POSTs to `/api/v1/feeders/:uuid/heartbeat` ev
 14. **Internal API Security:** `/api/internal/history-snapshot` requires `INTERNAL_CRON_SECRET` header (timing-safe comparison); POST-only (GET removed for CSRF prevention); readsb data validated before DB insert (hex format, lat/lon ranges)
 15. **Playback Performance:** Direct Mapbox `getSource().setData()` calls during playback avoid React re-renders; O(n) Set-based interpolation lookup replaces O(n^2) array scan; pulse animations gated on emergency count; trail points capped at 2000 during playback; version counter ref replaces playbackTime in memo deps
 16. **Data Validation:** History queries enforce `from < to`, max 60-minute range, valid hex codes, and `take: 100000` safety limit; feeder heartbeat validates hex format and coordinate ranges before insert
+17. **Feeder Scoring:** Composite 0-100 score calculated hourly using formula: `(40*uptime + 30*messageRate + 20*positionRate + 10*aircraftCount)` normalized to percentiles; range calculated via haversine distance from aircraft positions in heartbeat payload
 
 ---
 
@@ -239,13 +245,18 @@ npx tsx scripts/history-cleanup.ts   # Clean old position data
 
 ## 10. Remaining Work
 
-See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 7-12).
+See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 8-12).
 
-**Immediate Priorities (Phase 7):**
-- [ ] Feeder scoring system (composite score from uptime, message rate, position rate, aircraft count)
-- [ ] Range tracking (max/avg range per feeder using Haversine formula)
-- [ ] Uptime visualization (7-day chart)
-- [ ] Enhanced leaderboard (regional rankings, score column, search)
+**Phase 7 Complete:**
+- [x] Feeder scoring system (0-100 composite score from uptime, message rate, position rate, aircraft count)
+- [x] Range tracking (max/avg range per feeder using haversine formula)
+- [x] Uptime visualization (7-day chart on feeder detail page)
+- [x] Enhanced leaderboard (score column, search, sort by score/range)
+
+**Immediate Priorities (Phase 8):**
+- [ ] Regional leaderboard rankings (group feeders by region)
+- [ ] Advanced filtering on leaderboard (altitude range, squawk filtering)
+- [ ] Feeder comparison view (side-by-side stats for selected feeders)
 
 **Technical Debt:**
 - [ ] Redis-backed rate limiting (currently in-memory)
@@ -259,4 +270,4 @@ See [ROADMAP.md](./ROADMAP.md) for the full development plan (Phases 7-12).
 
 ---
 
-*Last Updated: January 25, 2026 (Phase 6 Complete)*
+*Last Updated: January 28, 2026 (Phase 7 Complete)*

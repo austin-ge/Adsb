@@ -105,6 +105,17 @@ model Feeder {
   lastSeen       DateTime?
   isOnline       Boolean  @default(false)
 
+  // Range tracking (updated during heartbeat)
+  maxRangeNm     Float?   // Maximum range ever seen (nautical miles)
+  avgRangeNm24h  Float?   // Rolling 24-hour average range
+
+  // Scoring (updated hourly by stats-worker)
+  currentScore   Int      @default(0) // 0-100 composite score
+
+  // Rank tracking (for change indicators)
+  previousRank   Int?
+  currentRank    Int?
+
   // Historical stats
   stats FeederStats[]
 
@@ -125,6 +136,14 @@ model FeederStats {
   messages  Int      // Messages in this period
   positions Int      // Positions in this period
   aircraft  Int      // Unique aircraft seen
+
+  // Phase 7: Range and scoring metrics
+  maxRange      Float?  // Max range this hour (nm)
+  avgRange      Float?  // Average range this hour (nm)
+  score         Int?    // Composite score (0-100)
+  uptimePercent Float?  // Uptime percentage (0-100)
+  messageRate   Float?  // Messages per minute
+  positionRate  Float?  // Positions per minute
 
   @@index([feederId, timestamp])
   @@index([timestamp])

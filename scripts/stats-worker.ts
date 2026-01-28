@@ -19,6 +19,21 @@ const POLL_INTERVAL = 60 * 1000; // 1 minute
 const OFFLINE_THRESHOLD = 5 * 60 * 1000; // 5 minutes without data = offline
 const SNAPSHOT_INTERVAL = 60 * 60 * 1000; // 1 hour
 
+// Scoring weights (must sum to 1.0)
+const SCORE_WEIGHTS = {
+  uptime: 0.30,
+  messageRate: 0.25,
+  positionRate: 0.25,
+  aircraftCount: 0.20,
+};
+
+// Target values for 100% score in each metric
+const METRIC_TARGETS = {
+  messageRate: 1000,    // msgs/min for 100 score
+  positionRate: 500,    // pos/min for 100 score
+  aircraftCount: 50,    // aircraft for 100 score
+};
+
 // readsb stats endpoint
 const READSB_STATS_URL =
   process.env.READSB_STATS_URL || "http://localhost:8080/data/stats.json";
@@ -40,8 +55,6 @@ interface ReadsbStats {
   };
 }
 
-// Track previous stats for delta calculation
-let _previousStats: { messages: number; positions: number } | null = null;
 
 /**
  * Fetch stats from readsb
@@ -58,6 +71,55 @@ async function fetchStats(): Promise<ReadsbStats | null> {
     console.error("Error fetching stats:", error);
     return null;
   }
+}
+
+/**
+ * Calculate uptime percentage for a feeder based on recent FeederStats records.
+ * Expected: 1 snapshot per hour. Returns (actual / expected) * 100, capped at 100.
+ */
+async function calculateUptimePercent(feederId: string, hours: number = 24): Promise<number> {
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+  const snapshotCount = await prisma.feederStats.count({
+    where: {
+      feederId,
+      timestamp: { gte: since },
+    },
+  });
+
+  // Expected snapshots = hours (1 per hour)
+  const expectedSnapshots = hours;
+  const uptimePercent = (snapshotCount / expectedSnapshots) * 100;
+
+  // Cap at 100%
+  return Math.min(100, uptimePercent);
+}
+
+/**
+ * Calculate composite score from individual metrics.
+ * Each metric is normalized to 0-100 based on targets, then weighted.
+ */
+function calculateScore(
+  uptime: number,
+  msgRate: number,
+  posRate: number,
+  aircraft: number
+): number {
+  // Normalize each metric to 0-100
+  const uptimeNorm = Math.min(100, uptime);
+  const msgRateNorm = Math.min(100, (msgRate / METRIC_TARGETS.messageRate) * 100);
+  const posRateNorm = Math.min(100, (posRate / METRIC_TARGETS.positionRate) * 100);
+  const aircraftNorm = Math.min(100, (aircraft / METRIC_TARGETS.aircraftCount) * 100);
+
+  // Apply weights
+  const weightedScore =
+    uptimeNorm * SCORE_WEIGHTS.uptime +
+    msgRateNorm * SCORE_WEIGHTS.messageRate +
+    posRateNorm * SCORE_WEIGHTS.positionRate +
+    aircraftNorm * SCORE_WEIGHTS.aircraftCount;
+
+  // Return as integer 0-100
+  return Math.round(weightedScore);
 }
 
 /**
@@ -118,8 +180,6 @@ async function updateFeederStats() {
       );
     }
 
-    // Store for delta calculation
-    _previousStats = { messages: totalMessages, positions: totalPositions };
   } else {
     console.log("  No data received in last minute");
   }
@@ -211,19 +271,51 @@ async function createSnapshots() {
       ? Number(feeder.positionsTotal) - (lastSnapshot.positions || 0)
       : Number(feeder.positionsTotal);
 
+    const messages = messagesDelta > 0 ? messagesDelta : 0;
+    const positions = positionsDelta > 0 ? positionsDelta : 0;
+
+    // Calculate rates (per minute, assuming 60-minute snapshot interval)
+    const messageRate = messages / 60;
+    const positionRate = positions / 60;
+
+    // Calculate uptime for this feeder (24-hour window)
+    const uptimePercent = await calculateUptimePercent(feeder.id, 24);
+
+    // Calculate composite score
+    const score = calculateScore(
+      uptimePercent,
+      messageRate,
+      positionRate,
+      feeder.aircraftSeen
+    );
+
+    // Create the snapshot with all metrics
     await prisma.feederStats.create({
       data: {
         feederId: feeder.id,
-        messages: messagesDelta > 0 ? messagesDelta : 0,
-        positions: positionsDelta > 0 ? positionsDelta : 0,
+        messages,
+        positions,
         aircraft: feeder.aircraftSeen,
+        messageRate,
+        positionRate,
+        uptimePercent,
+        score,
       },
     });
 
+    // Update the feeder's current score
+    await prisma.feeder.update({
+      where: { id: feeder.id },
+      data: { currentScore: score },
+    });
+
     console.log(
-      `  Snapshot for ${feeder.name}: ${messagesDelta.toLocaleString()} msgs, ${positionsDelta.toLocaleString()} pos`
+      `  Snapshot for ${feeder.name}: ${messages.toLocaleString()} msgs, ${positions.toLocaleString()} pos, score=${score}, uptime=${uptimePercent.toFixed(1)}%`
     );
   }
+
+  // Update rankings for all feeders
+  await updateFeederRanks();
 
   // Clean up old snapshots (keep 30 days)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -236,6 +328,41 @@ async function createSnapshots() {
   if (deleted.count > 0) {
     console.log(`  Cleaned up ${deleted.count} old snapshots`);
   }
+}
+
+/**
+ * Update feeder rankings based on current scores.
+ * Preserves previousRank for calculating rank changes.
+ */
+async function updateFeederRanks(): Promise<void> {
+  console.log(`  Updating feeder rankings...`);
+
+  // Get all feeders ordered by score (highest first)
+  const feeders = await prisma.feeder.findMany({
+    orderBy: { currentScore: "desc" },
+    select: {
+      id: true,
+      name: true,
+      currentScore: true,
+      currentRank: true,
+    },
+  });
+
+  // Update each feeder's rank
+  for (let i = 0; i < feeders.length; i++) {
+    const feeder = feeders[i];
+    const newRank = i + 1; // 1-indexed rank
+
+    await prisma.feeder.update({
+      where: { id: feeder.id },
+      data: {
+        previousRank: feeder.currentRank,
+        currentRank: newRank,
+      },
+    });
+  }
+
+  console.log(`  Updated ranks for ${feeders.length} feeders`);
 }
 
 /**
