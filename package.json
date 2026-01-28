@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "worker": "npx tsx scripts/stats-worker.ts"
+    "worker": "npx tsx scripts/stats-worker.ts",
+    "workers": "concurrently -k -n stats,history,cleanup,segment -c blue,green,yellow,magenta \"npx tsx scripts/stats-worker.ts\" \"npx tsx scripts/history-recorder.ts\" \"CLEANUP_LOOP=true npx tsx scripts/history-cleanup.ts\" \"SEGMENTER_LOOP=true npx tsx scripts/flight-segmenter.ts\""
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
@@ -53,6 +54,7 @@
     "postcss": "^8.4.49",
     "prisma": "^6.0.0",
     "tailwindcss": "^3.4.16",
+    "concurrently": "^9.1.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

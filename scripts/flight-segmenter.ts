@@ -3,6 +3,9 @@
  *
  * Run with: npx tsx scripts/flight-segmenter.ts
  *
+ * By default, runs once and exits (for PM2 cron_restart).
+ * Set SEGMENTER_LOOP=true to run continuously with internal timing (for local dev).
+ *
  * Algorithm:
  * 1. Query distinct hex values with positions in the last 30 minutes
  * 2. For each hex, get all positions ordered by timestamp
@@ -17,6 +20,8 @@
  *   DATABASE_URL - PostgreSQL connection string
  *   LOOKBACK_MINUTES - How far back to look for positions (default: 30)
  *   GAP_THRESHOLD_MINUTES - Time gap to split flights (default: 15)
+ *   SEGMENTER_LOOP - Set to "true" to run in a loop (default: false)
+ *   SEGMENTER_INTERVAL_MS - Interval between runs in loop mode (default: 300000 = 5 min)
  */
 
 import { PrismaClient, Prisma } from "@prisma/client";
@@ -26,6 +31,8 @@ const GAP_THRESHOLD_MS =
   parseInt(process.env.GAP_THRESHOLD_MINUTES || "15") * 60 * 1000;
 const DOWNSAMPLE_INTERVAL_MS = 30 * 1000; // 30 seconds between positions
 const ALTITUDE_CHANGE_THRESHOLD = 500; // Keep positions with >500ft altitude change
+const LOOP_MODE = process.env.SEGMENTER_LOOP === "true";
+const INTERVAL_MS = parseInt(process.env.SEGMENTER_INTERVAL_MS || "300000"); // 5 minutes
 
 const prisma = new PrismaClient();
 
@@ -309,9 +316,9 @@ async function segmentFlightsForHex(hex: string, cutoff: Date): Promise<number> 
   return created;
 }
 
-async function main() {
+async function runSegmentation() {
   const cutoff = new Date(Date.now() - LOOKBACK_MINUTES * 60 * 1000);
-  console.log(`Flight segmenter starting`);
+  console.log(`[${new Date().toISOString()}] Flight segmenter running`);
   console.log(`Looking back ${LOOKBACK_MINUTES} minutes (since ${cutoff.toISOString()})`);
   console.log(`Gap threshold: ${GAP_THRESHOLD_MS / 60000} minutes`);
 
@@ -342,11 +349,49 @@ async function main() {
     }
   }
 
-  console.log(`\nCompleted: ${totalCreated} new flight records created`);
-  await prisma.$disconnect();
+  console.log(`Completed: ${totalCreated} new flight records created`);
 }
 
-main().catch((err) => {
+async function main() {
+  console.log("Flight Segmenter starting...");
+  console.log(`Mode: ${LOOP_MODE ? "continuous loop" : "single run"}`);
+
+  if (LOOP_MODE) {
+    console.log(`Interval: ${INTERVAL_MS / 1000}s`);
+
+    // Initial run
+    await runSegmentation();
+
+    // Continuous loop
+    setInterval(async () => {
+      try {
+        await runSegmentation();
+      } catch (error) {
+        console.error("Segmentation error:", error);
+      }
+    }, INTERVAL_MS);
+  } else {
+    // Single run mode (for PM2 cron)
+    await runSegmentation();
+    await prisma.$disconnect();
+  }
+}
+
+// Handle graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\nShutting down...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\nShutting down...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+main().catch(async (err) => {
   console.error("Flight segmenter failed:", err);
+  await prisma.$disconnect();
   process.exit(1);
 });
